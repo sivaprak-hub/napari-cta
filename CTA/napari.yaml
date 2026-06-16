@@ -1,0 +1,12 @@
+name: napari-cta
+display_name: Calcium Transient Analyzer
+
+contributions:
+  commands:
+    - id: napari-cta.cta_controls
+      title: CTA Controls
+      python_name: CTA.widget:CalciumControls
+
+  widgets:
+    - command: napari-cta.cta_controls
+      display_name: CTA Controls

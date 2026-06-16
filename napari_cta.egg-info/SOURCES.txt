@@ -1,0 +1,10 @@
+pyproject.toml
+CTA/__init__.py
+CTA/backend.py
+CTA/widget.py
+napari_cta.egg-info/PKG-INFO
+napari_cta.egg-info/SOURCES.txt
+napari_cta.egg-info/dependency_links.txt
+napari_cta.egg-info/entry_points.txt
+napari_cta.egg-info/requires.txt
+napari_cta.egg-info/top_level.txt

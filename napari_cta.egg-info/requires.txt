@@ -1,0 +1,11 @@
+napari
+numpy
+pandas
+tifffile
+scipy
+scikit-image
+scikit-learn
+matplotlib
+openpyxl
+aicsimageio
+imagecodecs

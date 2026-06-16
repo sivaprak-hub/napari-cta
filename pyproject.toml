@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "napari-cta"
+version = "0.1.0"
+description = "Calcium Transient Analyzer napari plugin"
+requires-python = ">=3.9"
+dependencies = [
+    "napari",
+    "numpy",
+    "pandas",
+    "tifffile",
+    "scipy",
+    "scikit-image",
+    "scikit-learn",
+    "matplotlib",
+    "openpyxl",
+    "aicsimageio",
+    "imagecodecs",
+]
+
+[project.entry-points."napari.manifest"]
+napari-cta = "CTA:napari.yaml"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["CTA*"]
