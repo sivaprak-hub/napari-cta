@@ -27,3 +27,6 @@ napari-cta = "CTA:napari.yaml"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["CTA*"]
+
+[tool.setuptools.package-data]
+"CTA" = ["*.yaml"]
