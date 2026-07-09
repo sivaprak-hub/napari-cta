@@ -179,6 +179,21 @@ def read_file_timing(path):
     """
     result = {'fps': None, 'T': None, 'source': None}
 
+    # --- 0. Sidecar .fps file (user-confirmed value persisted next to the file) ---
+    sidecar = os.path.splitext(path)[0] + '.fps'
+    if os.path.isfile(sidecar):
+        try:
+            import json
+            with open(sidecar) as fh:
+                data = json.load(fh)
+            fps_val = float(data.get('fps', 0))
+            if fps_val > 0:
+                result['fps']    = fps_val
+                result['source'] = f"sidecar ({sidecar})"
+                return result
+        except Exception:
+            pass
+
     if path.lower().endswith('.vsi'):
         try:
             ets_files = _find_ets_files(path)
@@ -204,11 +219,21 @@ def read_file_timing(path):
 
             # --- 1. ImageJ metadata ---
             ij = tif.imagej_metadata or {}
+            # Detect placeholder finterval=1.0 written by our own VSI converter.
+            # When Software=tifffile.py and finterval=1.0 exactly, the value is
+            # not real — the converter has no way to know the true frame rate.
+            software_tag = tif.pages[0].tags.get(305)
+            written_by_tifffile = (software_tag and
+                                   'tifffile' in str(software_tag.value).lower())
             fi = ij.get('finterval')
             if fi and float(fi) > 0:
-                result['fps']    = round(1.0 / float(fi), 4)
-                result['source'] = 'ImageJ metadata (finterval)'
-                return result
+                fi_f = float(fi)
+                if fi_f == 1.0 and written_by_tifffile:
+                    pass  # skip placeholder — fall through to return fps=None
+                else:
+                    result['fps']    = round(1.0 / fi_f, 4)
+                    result['source'] = 'ImageJ metadata (finterval)'
+                    return result
             fp = ij.get('fps')
             if fp and float(fp) > 0:
                 result['fps']    = round(float(fp), 4)
@@ -283,6 +308,14 @@ def read_file_timing(path):
     return result
 
 
+def save_fps_sidecar(tiff_path, fps):
+    """Save user-confirmed FPS next to the TIFF so it auto-loads on next open."""
+    import json
+    sidecar = os.path.splitext(tiff_path)[0] + '.fps'
+    with open(sidecar, 'w') as fh:
+        json.dump({'fps': fps, 'path': os.path.basename(tiff_path)}, fh)
+
+
 def convert_single_vsi(input_path):
     """
     Converts VSI to ImageJ TIFF. Reads frames from the ETS companion file when present.
@@ -305,11 +338,14 @@ def convert_single_vsi(input_path):
             return False, "No ETS companion file found and aicsimageio is not installed."
 
         save_path = os.path.splitext(input_path)[0] + ".tif"
+        # Deliberately omit finterval — Olympus VSI has no embedded frame rate.
+        # Writing finterval=1.0 here would be read back as real metadata
+        # and produce wildly wrong durations. The user must set FPS after loading.
         tifffile.imwrite(
             save_path,
             data,
             photometric='minisblack',
-            metadata={'axes': 'TYX', 'finterval': 1.0},
+            metadata={'axes': 'TYX'},
             imagej=True,
         )
         return True, f"Saved {data.shape[0]} frames to {os.path.basename(save_path)}"
@@ -386,21 +422,45 @@ def extract_detailed_features(time_stamps, signal):
     peak_idx = max_peaks[np.argmax(props['prominences'])]
 
     min_peaks, _ = find_peaks(-signal)
-    pre      = min_peaks[min_peaks < peak_idx]
-    start_idx = pre[-1] if len(pre) > 0 else 0
-    post     = min_peaks[min_peaks > peak_idx]
-    end_idx  = post[0] if len(post) > 0 else len(signal)
+    pre = min_peaks[min_peaks < peak_idx]
+
+    # FIX 1: when no preceding valley, find the last point below 5% of amplitude
+    # rather than using index 0 (which would measure T_ON from recording start).
+    if len(pre) > 0:
+        start_idx = pre[-1]
+    else:
+        sig_min = np.min(signal[:peak_idx + 1])
+        rough_amp = signal[peak_idx] - sig_min
+        thresh5 = sig_min + 0.05 * rough_amp
+        below = np.where(signal[:peak_idx] <= thresh5)[0]
+        start_idx = int(below[-1]) if len(below) > 0 else 0
 
     baseline  = signal[start_idx]
     amp       = signal[peak_idx] - baseline
     t_start   = time_stamps[start_idx]
     peak_time = time_stamps[peak_idx]
 
+    # FIX 2: extend decay search window to 1.5× median beat period so T90_OFF
+    # doesn't go NaN when the next valley is a spurious local minimum.
+    if len(max_peaks) >= 2:
+        beat_period_frames = int(np.median(np.diff(max_peaks)))
+    else:
+        beat_period_frames = len(signal) // 2
+    end_search = min(len(signal), peak_idx + int(beat_period_frames * 1.5))
+
+    post = min_peaks[min_peaks > peak_idx]
+    # Prefer the valley inside our extended window; fall back to end_search.
+    post_in_window = post[post < end_search]
+    end_idx = int(post_in_window[0]) if len(post_in_window) > 0 else end_search
+
     levs = [baseline + x * amp for x in [0.1, 0.5, 0.9]]
 
     # peak_idx + 1 so the peak sample is included in the rising window
-    t_on  = [get_time_at_level(time_stamps, signal, start_idx, peak_idx + 1, l, 'rising')  for l in levs]
-    t_off = [get_time_at_level(time_stamps, signal, peak_idx, end_idx,       l, 'decay')   for l in reversed(levs)]
+    t_on  = [get_time_at_level(time_stamps, signal, start_idx, peak_idx + 1, l, 'rising')
+             for l in levs]
+    # Use the extended window for decay so T90_OFF has room to land
+    t_off = [get_time_at_level(time_stamps, signal, peak_idx, end_search, l, 'decay')
+             for l in reversed(levs)]
 
     def dms(t1, t2):
         return abs(t1 - t2) * 1000 if not np.isnan(t1) and not np.isnan(t2) else np.nan
@@ -413,7 +473,15 @@ def extract_detailed_features(time_stamps, signal):
             cd = w50 * 1.6
             cd_estimated = True
 
-    t_end = time_stamps[end_idx] if end_idx < len(time_stamps) else np.nan
+    # FIX 3: T_OFF_ms = time from peak to the point where the signal returns to
+    # baseline (F0) level, not to the next valley.  This is the physiologically
+    # correct "relaxation time" and prevents T_OFF > T90_OFF situations.
+    t_return = get_time_at_level(time_stamps, signal, peak_idx, end_search,
+                                  baseline + 0.02 * amp, 'decay')
+    T_OFF_ms = dms(t_return, peak_time)
+    # If baseline-return not found within window, fall back to next-valley time
+    if np.isnan(T_OFF_ms) and end_idx < len(time_stamps):
+        T_OFF_ms = dms(time_stamps[end_idx], peak_time)
 
     return {
         'BPM':      (len(max_peaks) / (time_stamps[-1] - time_stamps[0])) * 60
@@ -429,21 +497,197 @@ def extract_detailed_features(time_stamps, signal):
         'T90_OFF':  dms(t_off[2], peak_time),
         'CD':       cd,
         'CD_estimated': cd_estimated,
-        'T_OFF_ms': dms(t_end, peak_time),
+        'T_OFF_ms': T_OFF_ms,
     }
 
 
+def _fit_decay_tau(signal, time_stamps, peak_idx, end_idx, baseline, amp):
+    """
+    Log-linear fit to the observable decay segment.
+    Returns τ in milliseconds, or np.nan if the fit is unreliable.
+
+    We only fit the portion where the signal has decayed between 5 % and 95 %
+    of amplitude — this avoids noise near the peak and near the baseline.
+    """
+    d_sig  = signal[peak_idx: end_idx]
+    d_time = time_stamps[peak_idx: end_idx] - time_stamps[peak_idx]
+    if len(d_sig) < 5 or amp < 1e-9:
+        return np.nan
+    y_norm = (d_sig - baseline) / amp          # 1.0 at peak → 0.0 at baseline
+    valid  = (y_norm > 0.05) & (y_norm < 0.95)
+    if np.sum(valid) < 4:
+        return np.nan
+    try:
+        slope, _ = np.polyfit(d_time[valid], np.log(np.clip(y_norm[valid], 1e-10, None)), 1)
+        if slope >= 0:
+            return np.nan
+        return (-1.0 / slope) * 1000           # τ in ms
+    except Exception:
+        return np.nan
+
+
+def extract_beat_averaged_features(time_stamps, signal, beat_peaks):
+    """
+    Compute kinetic parameters for every detected beat and return beat-averages.
+
+    Definitions (matching the diagram):
+      Rise (measured from transient onset):
+        T_ON_ms  = onset → peak
+        T10_ON   = onset → 10 % amplitude crossing
+        T50_ON   = onset → 50 % amplitude crossing
+        T90_ON   = onset → 90 % amplitude crossing
+
+      Decay (measured from peak):
+        T10_OFF  = peak → 90 % level  (10 % decayed)
+        T50_OFF  = peak → 50 % level  (50 % decayed)
+        T90_OFF  = peak → 10 % level  (90 % decayed)
+        T_OFF_ms = peak → ~0 % level  (extrapolated via exp fit)
+
+      T90_OFF and T_OFF are computed from an exponential fit to the decay
+      so that they have a stable, physically consistent relationship:
+          T_OFF ≈ 1.30 × T90_OFF  (for a pure monoexponential).
+      This eliminates the large, noisy gap that appears when T_OFF is
+      estimated by a hard threshold near the noisy baseline.
+
+      CD = duration above 10 % amplitude
+         = T_ON_ms + T_OFF_ms − T10_ON   (from diagram: T10_ON crossing to F0 return)
+    """
+    if beat_peaks is None or len(beat_peaks) == 0:
+        return extract_detailed_features(time_stamps, signal)
+
+    sig_range = np.max(signal) - np.min(signal)
+    if sig_range < 1e-6:
+        return None
+
+    def dms(t1, t2):
+        return abs(t1 - t2) * 1000 if not (np.isnan(t1) or np.isnan(t2)) else np.nan
+
+    if len(beat_peaks) >= 2:
+        med_period = int(np.median(np.diff(beat_peaks)))
+    else:
+        med_period = len(signal) // 2
+    half_period = max(med_period // 2, 3)
+
+    per_beat = []
+    for peak_idx in beat_peaks:
+        peak_idx = int(peak_idx)
+        if peak_idx >= len(signal):
+            continue
+
+        # ── Onset: local minimum in the half-period before the peak ──────────
+        lookback  = max(0, peak_idx - half_period)
+        pre_seg   = signal[lookback: peak_idx]
+        if len(pre_seg) == 0:
+            continue
+        start_rel = int(np.argmin(pre_seg))
+        start_idx = lookback + start_rel
+
+        baseline  = signal[start_idx]
+        amp       = signal[peak_idx] - baseline
+        if amp < sig_range * 0.05:          # beat too small → skip
+            continue
+
+        t_start   = time_stamps[start_idx]
+        peak_time = time_stamps[peak_idx]
+
+        # ── Decay window: peak → inter-beat valley ────────────────────────────
+        # Extend up to 1.5 × beat period but clip to the valley between beats
+        # so we don't trespass into the next beat's upstroke.
+        end_decay = min(len(signal), peak_idx + int(med_period * 1.5))
+        next_peaks = beat_peaks[beat_peaks > peak_idx]
+        if len(next_peaks) > 0:
+            nxt = int(next_peaks[0])
+            region = signal[peak_idx: min(nxt, end_decay)]
+            if len(region) > 1:
+                valley_rel = int(np.argmin(region))
+                end_decay  = min(end_decay, peak_idx + valley_rel + 1)
+
+        # ── Rise crossings (directly measured) ───────────────────────────────
+        levs_rise = [baseline + f * amp for f in (0.1, 0.5, 0.9)]
+        t10_on_t, t50_on_t, t90_on_t = [
+            get_time_at_level(time_stamps, signal, start_idx, peak_idx + 1, lv, 'rising')
+            for lv in levs_rise
+        ]
+
+        # ── Decay crossings (directly measured within beat window) ───────────
+        t10_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+                                       baseline + 0.9 * amp, 'decay')   # 10 % decayed
+        t50_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+                                       baseline + 0.5 * amp, 'decay')   # 50 % decayed
+
+        # ── Exponential fit for T90_OFF and T_OFF ────────────────────────────
+        # Using the exp fit avoids the noisy-near-baseline problem:
+        #   T90_OFF = τ × ln(10)   (signal at 10 % remaining)
+        #   T_OFF   = τ × ln(20)   (signal at 5 % remaining ≈ practical baseline)
+        #   Ratio   = ln(20)/ln(10) ≈ 1.30  (constant, no more wild gap)
+        tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_decay, baseline, amp)
+
+        if not np.isnan(tau_ms):
+            T90_OFF  = tau_ms * np.log(10)    # ≈ 2.303 × τ
+            T_OFF_ms = tau_ms * np.log(20)    # ≈ 2.996 × τ
+        else:
+            # Direct fallback for T90_OFF
+            t90_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+                                           baseline + 0.1 * amp, 'decay')
+            T90_OFF   = dms(t90_off_t, peak_time)
+            # Direct fallback for T_OFF at 5 % level
+            t_off_5   = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+                                           baseline + 0.05 * amp, 'decay')
+            T_OFF_ms  = dms(t_off_5, peak_time)
+
+        per_beat.append({
+            'Amp':      amp,
+            'F0':       baseline,
+            'T_ON_ms':  (peak_time - t_start) * 1000,
+            'T10_ON':   dms(t10_on_t, t_start),
+            'T50_ON':   dms(t50_on_t, t_start),
+            'T90_ON':   dms(t90_on_t, t_start),
+            'T10_OFF':  dms(t10_off_t, peak_time),
+            'T50_OFF':  dms(t50_off_t, peak_time),
+            'T90_OFF':  T90_OFF,
+            'T_OFF_ms': T_OFF_ms,
+        })
+
+    if not per_beat:
+        return extract_detailed_features(time_stamps, signal)
+
+    # ── Average across beats (ignore NaN) ────────────────────────────────────
+    keys = ['Amp', 'F0', 'T_ON_ms', 'T10_ON', 'T50_ON', 'T90_ON',
+            'T10_OFF', 'T50_OFF', 'T90_OFF', 'T_OFF_ms']
+    result = {}
+    for k in keys:
+        vals = [b[k] for b in per_beat if not np.isnan(b[k])]
+        result[k] = float(np.mean(vals)) if vals else np.nan
+
+    total_dur = time_stamps[-1] - time_stamps[0]
+    result['BPM'] = (len(beat_peaks) / total_dur) * 60 if total_dur > 0 else 0.0
+
+    # CD = duration above 10 % amplitude
+    #     = T_ON_ms + T_OFF_ms − T10_ON
+    #     (time from first 10%-rise crossing to baseline return)
+    t_on   = result.get('T_ON_ms',  np.nan)
+    t_off  = result.get('T_OFF_ms', np.nan)
+    t10_on = result.get('T10_ON',   np.nan)
+    if not any(np.isnan(v) for v in (t_on, t_off, t10_on)):
+        result['CD'] = t_on + t_off - t10_on
+    else:
+        result['CD'] = np.nan
+
+    return result
+
+
 def calculate_synchronicity(signals):
+    """
+    Mean pairwise Pearson correlation across all traces.
+    np.corrcoef already z-scores internally, so no pre-normalization needed.
+    Clips result to [0, 1] — negative mean correlation means asynchronous.
+    """
     if signals.shape[0] < 2:
         return 0.0
-    mean = np.mean(signals, axis=1, keepdims=True)
-    std  = np.std(signals,  axis=1, keepdims=True)
-    std[std == 0] = 1
-    normalized = (signals - mean) / std
-    corr = np.corrcoef(normalized)
-    n    = corr.shape[0]
+    corr     = np.corrcoef(signals)
+    n        = corr.shape[0]
     off_diag = corr[np.triu_indices(n, k=1)]
-    return float(np.mean(off_diag)) if len(off_diag) > 0 else 0.0
+    return float(np.clip(np.nanmean(off_diag), 0.0, 1.0)) if len(off_diag) > 0 else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -853,9 +1097,11 @@ class AnalysisWorker(QThread):
                 clu_map[idx] = 1 if lbl == -1 else lbl + 2
             clu_map = clu_map.reshape(H_bin, W_bin)
 
-            active_sigs = corrected_signals[active_idx] if len(active_idx) > 0 \
-                          else corrected_signals[:0]
-            sync_index  = calculate_synchronicity(active_sigs) if len(active_idx) > 1 else 0.0
+            # Use bandpass-filtered traces for sync — they remove DC drift and
+            # low-frequency photobleach artefacts, giving a cleaner correlation.
+            active_filtered = filtered_traces[active_idx] if len(active_idx) > 0 \
+                              else filtered_traces[:0]
+            sync_index = calculate_synchronicity(active_filtered) if len(active_idx) > 1 else 0.0
 
             self.progress.emit(100)
 

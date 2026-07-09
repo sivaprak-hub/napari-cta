@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import tifffile
 import napari
-import matplotlib.pyplot as plt
 
 import matplotlib
 matplotlib.use('qtagg')
@@ -17,8 +16,7 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLab
                              QCheckBox, QAbstractItemView, QScrollArea, QSizePolicy, QApplication)
 from qtpy.QtCore import Qt, QTimer, QSize
 from qtpy.QtGui import QColor
-from qtpy.QtCore import QThread, Signal
-from .backend import AnalysisWorker, BatchWorker, extract_detailed_features, load_image, convert_single_vsi, read_file_timing
+
 
 def _screen_geom():
     """Return (width, height) of the primary screen's available area."""
@@ -30,6 +28,11 @@ def _screen_geom():
         return 1920, 1080
     g = screen.availableGeometry()
     return g.width(), g.height()
+
+from .backend import (AnalysisWorker, BatchWorker,
+                       extract_detailed_features, extract_beat_averaged_features,
+                       load_image, convert_single_vsi, read_file_timing,
+                       save_fps_sidecar)
 
 
 class VsiConverterWorker(AnalysisWorker.__bases__[0]):   # reuse QThread
@@ -57,6 +60,7 @@ class VsiConverterWorker(AnalysisWorker.__bases__[0]):   # reuse QThread
 
 # Re-declare the worker with proper QThread inheritance (the above shortcut
 # can't resolve QThread at class-body time reliably on all Qt bindings).
+from qtpy.QtCore import QThread, Signal
 
 class VsiConverterWorker(QThread):
     progress     = Signal(int)
@@ -92,6 +96,7 @@ class CalciumControls(QWidget):
         self.master_results    = []
         self.master_traces     = []
         self._fps_source       = None
+        self._results_cache    = {}   # (path, bin, model, mode, val) → results dict
 
         # Outer widget wraps a scroll area so the panel works on small screens
         sw, _sh = _screen_geom()
@@ -292,15 +297,42 @@ class CalciumControls(QWidget):
             self.btn_run.setEnabled(True)
             self.btn_save_next.setEnabled(True)
 
+            T, H, W = self.raw_stack.shape
             timing = read_file_timing(fname)
+
             if timing['fps']:
                 self.combo_mode.setCurrentText("FPS")
                 self.spin_val.setValue(timing['fps'])
                 self._fps_source = timing['source']
             else:
                 self._fps_source = None
+                # Validate current setting against this file's frame count.
+                # If it gives an implausible duration, flag it loudly so the
+                # user knows to correct it before running analysis.
+                is_fps = (self.combo_mode.currentText() == "FPS")
+                val    = self.spin_val.value()
+                est_dur = T / max(val, 0.001) if is_fps else val
+                if est_dur > 300 or est_dur < 1:
+                    self.lbl_frames.setText(
+                        f"⚠ No FPS in file metadata — current setting gives "
+                        f"{est_dur:.0f}s for {T} frames. Please set FPS/Duration correctly!"
+                    )
+                    self.lbl_frames.setStyleSheet(
+                        "color: #FF5722; font-size: 11px; font-weight: bold;"
+                    )
+                    self.spin_bin.setValue(16 if max(H, W) < 2048 else 32)
+                    # Don't auto-process with obviously wrong timing
+                    if self.chk_auto.isChecked():
+                        QMessageBox.warning(
+                            self, "FPS Not Detected",
+                            f"No FPS metadata found in:\n{os.path.basename(fname)}\n\n"
+                            f"Current setting gives {est_dur:.0f}s for {T} frames, which looks wrong.\n\n"
+                            f"Please set the correct FPS or Duration and click 'Run Analysis'."
+                        )
+                    return
+                # Duration looks plausible but still no metadata source
+                self._update_frame_info()
 
-            T, H, W = self.raw_stack.shape
             self.spin_bin.setValue(16 if max(H, W) < 2048 else 32)
             self._update_frame_info()
 
@@ -333,9 +365,6 @@ class CalciumControls(QWidget):
     def start_analysis(self):
         if self.raw_stack is None:
             return
-        self.btn_run.setEnabled(False)
-        self.btn_save_next.setEnabled(False)
-        self.prog.setValue(0)
 
         is_fps = (self.combo_mode.currentText() == "FPS")
         self._last_params = {
@@ -344,6 +373,31 @@ class CalciumControls(QWidget):
             'use_fps': is_fps,
             'val':     self.spin_val.value(),
         }
+
+        cache_key = (
+            self.last_path,
+            self.spin_bin.value(),
+            self.combo_model.currentText(),
+            self.combo_mode.currentText(),
+            round(self.spin_val.value(), 4),
+        )
+
+        if cache_key in self._results_cache:
+            self.on_analysis_done(self._results_cache[cache_key])
+            return
+
+        self._pending_cache_key = cache_key
+        self.btn_run.setEnabled(False)
+        self.btn_save_next.setEnabled(False)
+        self.prog.setValue(0)
+
+        # Save user-entered FPS as sidecar so it auto-loads next time.
+        # Only save when the value was NOT already read from embedded metadata.
+        if self.last_path and not self._fps_source and is_fps:
+            try:
+                save_fps_sidecar(self.last_path, self.spin_val.value())
+            except Exception:
+                pass
 
         self.worker = AnalysisWorker(self.last_path, self._last_params)
         self.worker.progress.connect(self.prog.setValue)
@@ -356,6 +410,10 @@ class CalciumControls(QWidget):
         self.btn_run.setEnabled(True)
         self.btn_save_next.setEnabled(True)
         self.prog.setValue(100)
+
+        if hasattr(self, '_pending_cache_key'):
+            self._results_cache[self._pending_cache_key] = results
+            del self._pending_cache_key
 
         self.lbl_beats.setText(f"Beats detected: {results['beat_count']}")
         self.lbl_sync.setText(f"Sync index: {results['sync_index']:.3f}")
@@ -435,18 +493,40 @@ class CalciumControls(QWidget):
         if not path:
             return
         try:
-            id_cols = ['Filename', 'ID', 'X (Binned)', 'Y (Binned)']
-
+            # --- Metrics sheet: fixed column order, one row per cell ---
+            metric_col_order = [
+                'Filename', 'Cell', 'X (Binned)', 'Y (Binned)',
+                'BPM', 'Amp', 'F0',
+                'T_ON_ms', 'T10_ON', 'T50_ON', 'T90_ON',
+                'T_OFF_ms', 'T10_OFF', 'T50_OFF', 'T90_OFF',
+                'CD',
+            ]
             df_metrics = pd.DataFrame(self.master_results)
-            metrics_cols = id_cols + [c for c in df_metrics.columns if c not in id_cols]
-            df_metrics = df_metrics[metrics_cols]
+            # Keep only known columns, in order (ignore any extras)
+            present = [c for c in metric_col_order if c in df_metrics.columns]
+            df_metrics = df_metrics[present].round(3)
 
             with pd.ExcelWriter(path, engine='openpyxl') as writer:
                 df_metrics.to_excel(writer, sheet_name='Metrics', index=False)
+
                 if self.master_traces:
-                    df_traces = pd.DataFrame(self.master_traces)
-                    trace_cols = id_cols + [c for c in df_traces.columns if c not in id_cols]
-                    df_traces[trace_cols].to_excel(writer, sheet_name='Traces', index=False)
+                    # --- Traces sheet: rows = time points, columns = cells ---
+                    # Build one column per cell; label = "File | Cell | Y,X"
+                    time_ref = self.master_traces[0]['time']
+                    df_traces = pd.DataFrame({'Time (s)': time_ref})
+                    for tr in self.master_traces:
+                        col_label = (
+                            f"{os.path.splitext(tr['Filename'])[0]}"
+                            f"_P{tr['Cell'].lstrip('P')}"
+                            f"_Y{tr['Y']}X{tr['X']}"
+                        )
+                        # Pad / trim if time lengths differ between files
+                        sig = tr['signal']
+                        n   = len(df_traces)
+                        if len(sig) < n:
+                            sig = sig + [np.nan] * (n - len(sig))
+                        df_traces[col_label] = sig[:n]
+                    df_traces.to_excel(writer, sheet_name='Traces', index=False)
 
             n_sheets = 2 if self.master_traces else 1
             QMessageBox.information(
@@ -495,10 +575,10 @@ class ResultsWidget(QWidget):
         self.selected_coords = []
 
         _sw, sh = _screen_geom()
-        self.setMinimumHeight(150)
-        self.setMaximumHeight(max(200, sh // 3)) 
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.setMinimumHeight(max(216, int(sh * 0.24)))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+        import matplotlib.pyplot as plt
         cmap        = plt.get_cmap('tab20')
         self.colors = [matplotlib.colors.to_hex(cmap(i)) for i in np.linspace(0, 1, 50)]
 
@@ -539,9 +619,9 @@ class ResultsWidget(QWidget):
 
         self.splitter.addWidget(self.canvas)
         self.splitter.addWidget(self.table)
-        self.splitter.setSizes([1000, 1000])
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([1000, 1000])
         layout.addWidget(self.splitter)
 
         self.viewer.mouse_drag_callbacks.append(self.on_click)
@@ -561,30 +641,55 @@ class ResultsWidget(QWidget):
         rows = []
         if not self.results:
             return rows
-        time = self.results['time']
-        sigs = self.results['corrected_signals']
-        W    = self.results['dims'][1]
-        for y, x in self.selected_coords:
+        time       = self.results['time']
+        sigs       = self.results['corrected_signals']
+        W          = self.results['dims'][1]
+        beat_peaks = self.results.get('beat_peaks', np.array([]))
+        for i, (y, x) in enumerate(self.selected_coords):
             idx = y * W + x
-            m   = extract_detailed_features(time, sigs[idx])
+            m   = extract_beat_averaged_features(time, sigs[idx], beat_peaks)
             if m:
-                m.update({'Filename': filename, 'X (Binned)': x, 'Y (Binned)': y, 'ID': idx})
-                rows.append(m)
+                m.pop('CD_estimated', None)   # internal flag, not needed in export
+                row = {
+                    'Filename':   filename,
+                    'Cell':       f'P{i + 1}',
+                    'X (Binned)': x,
+                    'Y (Binned)': y,
+                    'BPM':        m.get('BPM'),
+                    'Amp':        m.get('Amp'),
+                    'F0':         m.get('F0'),
+                    'T_ON_ms':    m.get('T_ON_ms'),
+                    'T10_ON':     m.get('T10_ON'),
+                    'T50_ON':     m.get('T50_ON'),
+                    'T90_ON':     m.get('T90_ON'),
+                    'T_OFF_ms':   m.get('T_OFF_ms'),
+                    'T10_OFF':    m.get('T10_OFF'),
+                    'T50_OFF':    m.get('T50_OFF'),
+                    'T90_OFF':    m.get('T90_OFF'),
+                    'CD':         m.get('CD'),
+                }
+                rows.append(row)
         return rows
 
     def get_current_traces(self, filename):
+        """Return one dict per cell.  Time array + signal stored as lists so the
+        exporter can pivot to a readable column-per-cell layout."""
         rows = []
         if not self.results:
             return rows
         time = self.results['time']
         sigs = self.results['corrected_signals']
         W    = self.results['dims'][1]
-        for y, x in self.selected_coords:
-            idx  = y * W + x
-            row  = {'Filename': filename, 'ID': idx, 'X (Binned)': x, 'Y (Binned)': y}
-            for t_val, sig_val in zip(time, sigs[idx]):
-                row[f't={t_val:.3f}s'] = float(sig_val)
-            rows.append(row)
+        for i, (y, x) in enumerate(self.selected_coords):
+            idx = y * W + x
+            rows.append({
+                'Filename': filename,
+                'Cell':     f'P{i + 1}',
+                'X':        x,
+                'Y':        y,
+                'time':     list(time),
+                'signal':   [float(v) for v in sigs[idx]],
+            })
         return rows
 
     def random_sample(self):
@@ -677,7 +782,7 @@ class ResultsWidget(QWidget):
                 self.ax.plot(time[beat_peaks], sig[beat_peaks], 'v',
                              color=color, markersize=5, alpha=0.7)
 
-            m = extract_detailed_features(time, sig)
+            m = extract_beat_averaged_features(time, sig, beat_peaks)
             r = self.table.rowCount()
             self.table.insertRow(r)
             self.table.setItem(r, 0, QTableWidgetItem(f"P{i+1}"))
@@ -712,8 +817,17 @@ class ResultsWidget(QWidget):
             layer.refresh()
 
     def update_points_z(self, event):
-        if self.results and 'Selection' in self.viewer.layers:
-            self.refresh_ui()
+        # Only shift the Z (time) coordinate of existing selection points.
+        # Avoid a full matplotlib redraw + extract_detailed_features on every frame step.
+        if not self.results or 'Selection' not in self.viewer.layers:
+            return
+        layer = self.viewer.layers['Selection']
+        if len(layer.data) == 0:
+            return
+        t_idx = self.viewer.dims.current_step[0] if len(self.viewer.dims.current_step) > 2 else 0
+        new_data = layer.data.copy()
+        new_data[:, 0] = t_idx
+        layer.data = new_data
 
 
 # ---------------------------------------------------------------------------
