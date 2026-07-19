@@ -97,6 +97,7 @@ class CalciumControls(QWidget):
         self.master_traces     = []
         self._fps_source       = None
         self._results_cache    = {}   # (path, bin, model, mode, val) → results dict
+        self._file_ui_state    = {}   # full UI state per file for lossless switching
 
         # Outer widget wraps a scroll area so the panel works on small screens
         sw, _sh = _screen_geom()
@@ -284,8 +285,63 @@ class CalciumControls(QWidget):
             return
         self.load_file(current.data(Qt.ItemDataRole.UserRole))
 
+    # ------------------------------------------------------------------
+    # Per-file UI state persistence
+    # ------------------------------------------------------------------
+
+    def _snapshot_ui_state(self):
+        """Capture the current file's full UI state before switching away."""
+        if self.last_path is None:
+            return
+        if not hasattr(self, 'results_widget') or self.results_widget.results is None:
+            return
+        self._file_ui_state[self.last_path] = {
+            'results':         self.results_widget.results,
+            'bin_size':        self.results_widget.bin_size,
+            'selected_coords': list(self.results_widget.selected_coords),
+            'lbl_beats':       self.lbl_beats.text(),
+            'lbl_sync':        self.lbl_sync.text(),
+        }
+
+    def _restore_ui_state(self, fname):
+        """Rebuild labels, napari layers and trace panel from a saved file state."""
+        state    = self._file_ui_state[fname]
+        results  = state['results']
+        bin_size = state['bin_size']
+        scale    = (bin_size, bin_size)
+
+        self.lbl_beats.setText(state['lbl_beats'])
+        self.lbl_sync.setText(state['lbl_sync'])
+        self.prog.setValue(100)
+
+        self.viewer.add_image(
+            results['pulsatility_map'],
+            name='Pulsatility', scale=scale, opacity=0.5,
+            colormap='inferno', blending='additive', visible=False,
+        )
+        act_map = results['activation_map']
+        if not np.all(np.isnan(act_map)):
+            self.viewer.add_image(
+                np.nan_to_num(act_map, nan=0.0),
+                name='Wave Map', scale=scale, opacity=0.6,
+                colormap='twilight_shifted', blending='additive',
+            )
+        self.viewer.add_labels(results['clu_map'], name='Clusters', scale=scale, opacity=0.45)
+        pts = self.viewer.add_points(name='Selection', ndim=3, size=scale[0] * 2)
+        pts.face_color = 'transparent'
+        pts.edge_color = 'transparent'
+        pts.mode       = 'pan_zoom'
+
+        self.results_widget.results         = results
+        self.results_widget.bin_size        = bin_size
+        self.results_widget.selected_coords = state['selected_coords']
+        self.results_widget.refresh_ui()
+
     def load_file(self, fname):
         try:
+            # Snapshot the outgoing file's full UI state before wiping layers
+            self._snapshot_ui_state()
+
             self.viewer.layers.clear()
             self.raw_stack = load_image(fname)
 
@@ -306,9 +362,6 @@ class CalciumControls(QWidget):
                 self._fps_source = timing['source']
             else:
                 self._fps_source = None
-                # Validate current setting against this file's frame count.
-                # If it gives an implausible duration, flag it loudly so the
-                # user knows to correct it before running analysis.
                 is_fps = (self.combo_mode.currentText() == "FPS")
                 val    = self.spin_val.value()
                 est_dur = T / max(val, 0.001) if is_fps else val
@@ -321,8 +374,9 @@ class CalciumControls(QWidget):
                         "color: #FF5722; font-size: 11px; font-weight: bold;"
                     )
                     self.spin_bin.setValue(16 if max(H, W) < 2048 else 32)
-                    # Don't auto-process with obviously wrong timing
-                    if self.chk_auto.isChecked():
+                    if fname in self._file_ui_state:
+                        self._restore_ui_state(fname)
+                    elif self.chk_auto.isChecked():
                         QMessageBox.warning(
                             self, "FPS Not Detected",
                             f"No FPS metadata found in:\n{os.path.basename(fname)}\n\n"
@@ -330,13 +384,14 @@ class CalciumControls(QWidget):
                             f"Please set the correct FPS or Duration and click 'Run Analysis'."
                         )
                     return
-                # Duration looks plausible but still no metadata source
                 self._update_frame_info()
 
             self.spin_bin.setValue(16 if max(H, W) < 2048 else 32)
             self._update_frame_info()
 
-            if self.chk_auto.isChecked():
+            if fname in self._file_ui_state:
+                self._restore_ui_state(fname)
+            elif self.chk_auto.isChecked():
                 self.start_analysis()
 
         except Exception as e:
