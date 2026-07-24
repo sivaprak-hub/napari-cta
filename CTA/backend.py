@@ -514,8 +514,8 @@ def _fit_decay_tau(signal, time_stamps, peak_idx, end_idx, baseline, amp):
     if len(d_sig) < 5 or amp < 1e-9:
         return np.nan
     y_norm = (d_sig - baseline) / amp          # 1.0 at peak → 0.0 at baseline
-    valid  = (y_norm > 0.05) & (y_norm < 0.95)
-    if np.sum(valid) < 4:
+    valid  = (y_norm > 0.03) & (y_norm < 0.97)
+    if np.sum(valid) < 3:
         return np.nan
     try:
         slope, _ = np.polyfit(d_time[valid], np.log(np.clip(y_norm[valid], 1e-10, None)), 1)
@@ -584,7 +584,7 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
 
         baseline  = signal[start_idx]
         amp       = signal[peak_idx] - baseline
-        if amp <= 0 or amp < sig_range * 0.05:   # skip inverted or too-small beats
+        if amp <= 0 or amp < sig_range * 0.02:   # skip inverted or too-small beats
             continue
 
         # F0 is the absolute diastolic fluorescence — must come from the raw
@@ -625,18 +625,29 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
 
         # ── Exponential fit for T90_OFF and T_OFF (valley-clipped window) ────
         tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_tau, baseline, amp)
+        # When the valley is very close, the clipped window has too few points.
+        # Retry with the full 1.5× search window before falling back to thresholds.
+        if np.isnan(tau_ms) and end_tau < end_search:
+            tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_search, baseline, amp)
 
         if not np.isnan(tau_ms):
             T90_OFF  = tau_ms * np.log(10)    # ≈ 2.303 × τ
             T_OFF_ms = tau_ms * np.log(20)    # ≈ 2.996 × τ
         else:
-            # Direct fallback — use full search window so NaN is not caused by a short window
+            # Direct threshold fallbacks — full search window
             t90_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                            baseline + 0.1 * amp, 'decay')
             T90_OFF   = dms(t90_off_t, peak_time)
             t_off_5   = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                            baseline + 0.05 * amp, 'decay')
             T_OFF_ms  = dms(t_off_5, peak_time)
+            # If T90_OFF still NaN, estimate via T50_OFF using monoexp ratio (≈3.32×)
+            t50_ms = dms(t50_off_t, peak_time)
+            if np.isnan(T90_OFF) and not np.isnan(t50_ms):
+                T90_OFF = t50_ms * (np.log(10) / np.log(2))
+            # If T_OFF still NaN but T90_OFF is valid, estimate via monoexp ratio (1.30×)
+            if np.isnan(T_OFF_ms) and not np.isnan(T90_OFF):
+                T_OFF_ms = T90_OFF * (np.log(20) / np.log(10))
 
         per_beat.append({
             'Amp':      amp,

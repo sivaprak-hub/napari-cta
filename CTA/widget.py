@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use('qtagg')
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog,
                              QSpinBox, QDoubleSpinBox, QComboBox, QAction,
@@ -33,6 +34,125 @@ from .backend import (AnalysisWorker, BatchWorker,
                        extract_detailed_features, extract_beat_averaged_features,
                        load_image, convert_single_vsi, read_file_timing,
                        save_fps_sidecar)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Theme stylesheet — object-name rules (QLabel#badge_green etc.) mean a
+# single setStyleSheet() call on the top-level widget updates every child.
+# ─────────────────────────────────────────────────────────────────────────────
+_PANEL_STYLE_DARK = """
+QWidget { background: #1e2130; color: #dce1f0; font-size: 12px; }
+QScrollArea, QScrollArea > QWidget > QWidget { background: #1e2130; border: none; }
+QScrollBar:vertical {
+    background: #181926; width: 6px; border-radius: 3px; margin: 0;
+}
+QScrollBar::handle:vertical { background: #404870; border-radius: 3px; min-height: 20px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+QPushButton {
+    background: #272b42; color: #c8d0ec; border: 1px solid #3a3e58;
+    border-radius: 5px; padding: 5px 10px; min-height: 24px; font-size: 11px;
+}
+QPushButton:hover  { background: #343857; border-color: #5a6088; color: #e8ecff; }
+QPushButton:pressed  { background: #1d2035; }
+QPushButton:disabled { color: #3e4260; background: #1e2030; border-color: #282c40; }
+
+QComboBox {
+    background: #232640; border: 1px solid #3a3e58; border-radius: 4px;
+    padding: 3px 8px; color: #c8d0ec; min-height: 22px;
+}
+QComboBox:hover { border-color: #5a6088; }
+QComboBox::drop-down { border: none; width: 16px; }
+QComboBox QAbstractItemView {
+    background: #232640; border: 1px solid #3a3e58;
+    selection-background-color: #3d4570; color: #c8d0ec; outline: none;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background: #232640; border: 1px solid #3a3e58; border-radius: 4px;
+    padding: 3px 6px; color: #c8d0ec; min-height: 22px;
+}
+QSpinBox:hover, QDoubleSpinBox:hover { border-color: #5a6088; }
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button { background: #2a2e48; border: none; width: 14px; }
+
+QListWidget {
+    background: #171a2c; border: 1px solid #3a3e58; border-radius: 4px; padding: 2px;
+}
+QListWidget::item          { padding: 3px 6px; border-radius: 3px; }
+QListWidget::item:selected { background: #3d4570; color: #ffffff; }
+QListWidget::item:hover:!selected { background: #272b42; }
+
+QProgressBar {
+    background: #171a2c; border: 1px solid #3a3e58; border-radius: 5px;
+    max-height: 8px; color: transparent;
+}
+QProgressBar::chunk {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #5c6bc0, stop:1 #42a5f5);
+    border-radius: 5px;
+}
+
+QCheckBox { color: #8890b0; spacing: 6px; font-size: 11px; }
+QCheckBox:hover { color: #c8d0ec; }
+QCheckBox::indicator {
+    width: 13px; height: 13px; border: 1px solid #3a3e58; border-radius: 3px; background: #232640;
+}
+QCheckBox::indicator:checked { background: #5c7cfa; border-color: #5c7cfa; }
+
+QTableWidget {
+    background: #171a2c; alternate-background-color: #1d2038; color: #c8d0ec;
+    border: 1px solid #3a3e58; border-radius: 4px; gridline-color: #282c45;
+    selection-background-color: #3d4570; selection-color: #ffffff;
+}
+QHeaderView::section {
+    background: #232640; color: #90caf9; border: none;
+    border-right: 1px solid #3a3e58; border-bottom: 2px solid #5c7cfa;
+    font-weight: 600; font-size: 10px; padding: 4px 3px;
+}
+QHeaderView::section:hover { background: #2d3255; }
+
+QSplitter::handle            { background: #3a3e58; }
+QSplitter::handle:horizontal { width: 2px; }
+QSplitter::handle:vertical   { height: 2px; }
+QLabel { background: transparent; }
+
+QSlider::groove:horizontal { height: 4px; border-radius: 2px; background: #2e3248; }
+QSlider::handle:horizontal {
+    width: 10px; height: 10px; margin: -3px 0; border-radius: 5px;
+    background: #5c7cfa; border: none;
+}
+QSlider::sub-page:horizontal { background: #5c7cfa; border-radius: 2px; }
+
+QLabel#badge_green {
+    background: #1a2e1a; border: 1px solid #2e5c2e; border-radius: 8px;
+    padding: 2px 8px; color: #69db7c; font-size: 11px; font-weight: 600;
+}
+QLabel#badge_blue {
+    background: #1a1e3a; border: 1px solid #2e3a6e; border-radius: 8px;
+    padding: 2px 8px; color: #74c0fc; font-size: 11px;
+}
+QPushButton#btn_danger {
+    background: #2d1a1a; border: 1px solid #5c2020; color: #e57373;
+    border-radius: 5px; padding: 5px 8px;
+}
+QPushButton#btn_danger:hover { background: #3d2020; border-color: #8c3030; color: #ff8a80; }
+QPushButton#btn_danger:pressed { background: #1d0e0e; }
+QPushButton#btn_ghost {
+    font-size: 11px; color: #6870a0; border: 1px dashed #333650;
+    background: #1a1d2e; border-radius: 4px;
+}
+QPushButton#btn_ghost:hover { color: #9090c0; border-color: #5060a0; background: #1e2138; }
+"""
+
+_PANEL_STYLE = _PANEL_STYLE_DARK  # default theme alias
+
+
+# Per-layer metadata: swatch colour and default napari colormap for image layers
+_LAYER_META = {
+    'Pulsatility': {'color': '#ff8c42', 'colormaps': ['inferno', 'viridis', 'plasma', 'magma', 'hot']},
+    'Wave Map':    {'color': '#9b72cf', 'colormaps': ['twilight_shifted', 'coolwarm', 'RdBu', 'bwr', 'hsv']},
+    'Clusters':    {'color': '#20c997', 'colormaps': None},
+    'Selection':   {'color': '#5c7cfa', 'colormaps': None},
+}
 
 
 class VsiConverterWorker(QThread):
@@ -60,10 +180,20 @@ class VsiConverterWorker(QThread):
 class CollapsibleSection(QWidget):
     """A titled section that can be expanded or collapsed by clicking its header."""
 
+    # Cycle through accent colours to give each section a distinct identity
+    _ACCENT_COLORS = ['#5c7cfa', '#20c997', '#f59f00', '#74c0fc', '#e64980']
+    _instance_count = 0
+
     def __init__(self, title, parent=None, expanded=True):
         super().__init__(parent)
+        # Pick a unique accent colour for this section instance
+        self._accent = CollapsibleSection._ACCENT_COLORS[
+            CollapsibleSection._instance_count % len(CollapsibleSection._ACCENT_COLORS)
+        ]
+        CollapsibleSection._instance_count += 1
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 2)
+        root.setContentsMargins(0, 0, 0, 4)
         root.setSpacing(0)
 
         self._title = title
@@ -71,24 +201,43 @@ class CollapsibleSection(QWidget):
         self._btn = QPushButton()
         self._btn.setCheckable(True)
         self._btn.setChecked(expanded)
-        self._btn.setStyleSheet(
-            "QPushButton {"
-            "  text-align: left; font-weight: bold; padding: 4px 6px;"
-            "  background: #3c3c3c; border: 1px solid #555; border-radius: 3px;"
-            "}"
-            "QPushButton:hover { background: #484848; }"
-        )
         self._btn.toggled.connect(self._on_toggled)
 
         self._body = QWidget()
         self._body_layout = QVBoxLayout(self._body)
-        self._body_layout.setContentsMargins(4, 4, 4, 4)
-        self._body_layout.setSpacing(4)
+        self._body_layout.setContentsMargins(8, 6, 8, 8)
+        self._body_layout.setSpacing(5)
         self._body.setVisible(expanded)
 
         root.addWidget(self._btn)
         root.addWidget(self._body)
         self._refresh_label(expanded)
+        self.apply_theme('dark')  # default; updated by _apply_theme() on parent
+
+    def apply_theme(self, theme: str = 'dark'):
+        """Reapply button + body stylesheets, preserving accent colour."""
+        btn_bg    = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #252840,stop:1 #1e2130)'
+        btn_hover = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2d3255,stop:1 #252840)'
+        btn_chk   = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2d3255,stop:1 #1e2130)'
+        btn_top   = '#2e3248'
+        btn_color = '#c5cae9'
+        body_bg   = '#191c2e'
+        body_bdr  = '#2e3248'
+        self._btn.setStyleSheet(
+            f"QPushButton {{"
+            f"  text-align: left; font-weight: 600; font-size: 11px; padding: 6px 8px;"
+            f"  background: {btn_bg}; border: none;"
+            f"  border-left: 3px solid {self._accent}; border-top: 1px solid {btn_top};"
+            f"  border-radius: 0px; color: {btn_color}; letter-spacing: 0.3px;"
+            f"}}"
+            f"QPushButton:hover {{ background: {btn_hover}; }}"
+            f"QPushButton:checked {{ background: {btn_chk}; }}"
+        )
+        self._body.setStyleSheet(
+            f"QWidget {{ background: {body_bg};"
+            f"  border-left: 1px solid {body_bdr}; border-right: 1px solid {body_bdr};"
+            f"  border-bottom: 1px solid {body_bdr}; }}"
+        )
 
     def _refresh_label(self, expanded):
         icon = "▼" if expanded else "▶"
@@ -109,6 +258,42 @@ class CollapsibleSection(QWidget):
         self._btn.setChecked(val)
 
 
+class GraphWindow(QWidget):
+    """Floating graph window that hosts the matplotlib canvas independently of the bottom panel."""
+
+    def __init__(self, results_widget, parent=None):
+        super().__init__(parent, Qt.WindowType.Window)
+        self._rw = results_widget
+        self.setWindowTitle("Calcium Transient Traces")
+        self.setMinimumSize(500, 320)
+        self._theme = 'dark'
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(0)
+
+    def auto_resize(self, n_traces: int):
+        """Resize window to fit n_traces traces comfortably."""
+        w = max(620, min(1600, 480 + n_traces * 110))
+        h = max(380, min(900, 360 + n_traces * 12))
+        self.resize(w, h)
+
+    def apply_theme(self, theme: str = 'dark'):
+        self._theme = theme
+        self.setStyleSheet("QWidget { background: #171a2c; }")
+
+    def closeEvent(self, event):
+        event.ignore()
+        rw = self._rw
+        if rw is not None and hasattr(rw, '_content_splitter'):
+            rw._content_splitter.insertWidget(0, rw.canvas)
+            rw.canvas.show()
+            w = rw._content_splitter.width()
+            if w > 20:
+                rw._content_splitter.setSizes([w // 2, w // 2])
+        self.hide()
+
+
 class CalciumControls(QWidget):
     """Left-panel controls — napari plugin widget."""
 
@@ -117,6 +302,8 @@ class CalciumControls(QWidget):
 
     def __init__(self, napari_viewer: 'napari.viewer.Viewer'):
         super().__init__()
+        self.setStyleSheet(_PANEL_STYLE)
+
         self.viewer            = napari_viewer
         self.raw_stack         = None
         self.processed_results = None
@@ -128,6 +315,7 @@ class CalciumControls(QWidget):
         self._verified_paths   = set()  # Bug 8: track which files have been saved
         self._file_states      = {}   # UI #2: path → 'unprocessed'|'analysed'|'verified'
         self._file_ui_state    = {}   # full UI state per file for lossless switching
+        self._theme            = 'dark'
 
         # Outer widget wraps a scroll area so the panel works on small screens
         sw, _sh = _screen_geom()
@@ -139,6 +327,32 @@ class CalciumControls(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+
+        # ── Plugin title header ─────────────────────────────────────────────
+        self._header_widget = QWidget()
+        h_lay = QVBoxLayout(self._header_widget)
+        h_lay.setContentsMargins(8, 8, 8, 6)
+        h_lay.setSpacing(2)
+
+        # Title row: icon+title
+        title_row = QHBoxLayout()
+        title_row.setSpacing(6)
+
+        self.lbl_title = QLabel("Calcium Transient Analyzer")
+        self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        title_row.addStretch(1)
+        title_row.addWidget(self.lbl_title, 5)
+        title_row.addStretch(1)
+
+        self.lbl_current_file = QLabel("No file loaded")
+        self.lbl_current_file.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_current_file.setWordWrap(True)
+
+        h_lay.addLayout(title_row)
+        h_lay.addWidget(self.lbl_current_file)
+        outer.addWidget(self._header_widget)
+        self._apply_header_theme('dark')
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -154,10 +368,11 @@ class CalciumControls(QWidget):
         outer.addWidget(scroll)
 
         # --- Collapse All / Expand All button ---
-        self._collapsed_all = False
-        self._btn_collapse_all = QPushButton("⊟  Collapse All")
+        self._btn_collapse_all = QPushButton("Collapse All")
         self._btn_collapse_all.setStyleSheet(
-            "font-size: 10px; padding: 2px 6px; background: #2a2a2a; border: 1px solid #444;"
+            "font-size: 10px; padding: 3px 8px;"
+            "background: #1e2130; border: 1px solid #333650;"
+            "border-radius: 3px; color: #6870a0;"
         )
         self._btn_collapse_all.clicked.connect(self._toggle_collapse_all)
         self.layout.addWidget(self._btn_collapse_all)
@@ -173,8 +388,8 @@ class CalciumControls(QWidget):
         btn_layout     = QHBoxLayout()
         btn_add_files  = QPushButton("Add Files...")
         btn_add_files.clicked.connect(self.add_files_to_queue)
-        btn_remove     = QPushButton("Remove Selected")
-        btn_remove.setStyleSheet("color: #d32f2f;")
+        btn_remove     = QPushButton("Remove")
+        btn_remove.setObjectName("btn_danger")
         btn_remove.clicked.connect(self.remove_selected_file)
         btn_layout.addWidget(btn_add_files)
         btn_layout.addWidget(btn_remove)
@@ -216,37 +431,80 @@ class CalciumControls(QWidget):
 
         # --- 3. ANALYSIS ---
         sec_act = CollapsibleSection("3. Analysis")
-        self.btn_run = QPushButton("Run Analysis")
+        self.btn_run = QPushButton("▶  Run Analysis")
+        self.btn_run.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #4a72e0, stop:1 #3558b8);"
+            "  color: white; font-weight: bold; font-size: 12px;"
+            "  border: 1px solid #3050a0; border-radius: 5px; padding: 7px;"
+            "  min-height: 28px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #5a84f4, stop:1 #4468cc);"
+            "}"
+            "QPushButton:pressed  { background: #2a46a0; }"
+            "QPushButton:disabled { background: #1e2130; color: #3e4260; border-color: #282c40; }"
+        )
         self.btn_run.clicked.connect(self.start_analysis)
         self.btn_run.setEnabled(False)
         self.prog = QProgressBar()
         self.lbl_beats = QLabel("Beats detected: —")
-        self.lbl_beats.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        self.lbl_beats.setObjectName("badge_green")
         self.lbl_sync  = QLabel("Sync index: —")
-        self.lbl_sync.setStyleSheet("color: #90CAF9;")
-        # Bug 4: button to restore the bottom panel if the user accidentally closes it
-        self.btn_show_traces = QPushButton("Show Traces Panel")
-        self.btn_show_traces.setStyleSheet("font-size: 11px;")
+        self.lbl_sync.setObjectName("badge_blue")
+        # Bug 4: restore bottom metrics panel; separate button opens floating graph window
+        self.btn_show_traces = QPushButton("Show Metrics Panel")
+        self.btn_show_traces.setObjectName("btn_ghost")
         self.btn_show_traces.clicked.connect(self._show_results_panel)
+        self.btn_show_graph = QPushButton("Show Graph")
+        self.btn_show_graph.setObjectName("btn_ghost")
+        self.btn_show_graph.clicked.connect(self._show_graph_window)
         sec_act.body_layout.addWidget(self.btn_run)
         sec_act.body_layout.addWidget(self.prog)
         sec_act.body_layout.addWidget(self.lbl_beats)
         sec_act.body_layout.addWidget(self.lbl_sync)
         sec_act.body_layout.addWidget(self.btn_show_traces)
+        sec_act.body_layout.addWidget(self.btn_show_graph)
 
         # --- 4. GUIDED EXPORT ---
         sec_export = CollapsibleSection("4. Guided Export")
-        self.btn_save_next = QPushButton("Verify, Save\n& Go Next")
+        self.btn_save_next = QPushButton("Verify")
         self.btn_save_next.setStyleSheet(
-            "background-color: #2196F3; color: white; font-weight: bold; padding: 5px;"
+            "QPushButton {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #2a9d5c, stop:1 #1f7a45);"
+            "  color: white; font-weight: bold; font-size: 12px;"
+            "  border: 1px solid #1a6038; border-radius: 5px; padding: 7px;"
+            "  min-height: 28px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #38b36e, stop:1 #2a9d5c);"
+            "}"
+            "QPushButton:pressed  { background: #155d30; }"
+            "QPushButton:disabled { background: #1e2130; color: #3e4260; border-color: #282c40; }"
         )
         self.btn_save_next.clicked.connect(self.save_and_next)
         self.btn_save_next.setEnabled(False)
         self.lbl_master_count = QLabel("Verified Cells: 0")
-        self.lbl_master_count.setStyleSheet("color: #4CAF50;")
-        self.btn_export_master = QPushButton("Export Master\nExcel")
+        self.lbl_master_count.setObjectName("badge_green")
+        self.btn_export_master = QPushButton("Export to Excel")
         self.btn_export_master.setStyleSheet(
-            "background-color: #4CAF50; color: white; font-weight: bold;"
+            "QPushButton {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #0ca678, stop:1 #087f5b);"
+            "  color: white; font-weight: bold; font-size: 12px;"
+            "  border: 1px solid #075e44; border-radius: 5px; padding: 7px;"
+            "  min-height: 28px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #12c78e, stop:1 #0ca678);"
+            "}"
+            "QPushButton:pressed  { background: #056040; }"
+            "QPushButton:disabled { background: #1e2130; color: #3e4260; border-color: #282c40; }"
         )
         self.btn_export_master.clicked.connect(self.export_master_data)
         self.btn_export_master.setEnabled(False)  # UI #3: disabled until cells are verified
@@ -264,13 +522,39 @@ class CalciumControls(QWidget):
         sec_vsi.body_layout.addWidget(self.lbl_vsi)
         sec_vsi.body_layout.addWidget(self.prog_vsi)
 
-        # VSI is always collapsed; exclude it from Collapse/Expand All
+        # --- 6. LAYER CONTROLS ---
+        sec_layers = CollapsibleSection("6. Layer Controls")
+        # Quick preset buttons
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(4)
+        for label, slot in [("All On", self._layers_all_on),
+                             ("Overlays", self._layers_overlays_only),
+                             ("Raw Only", self._layers_raw_only)]:
+            b = QPushButton(label)
+            b.setStyleSheet("font-size: 10px; padding: 2px 5px; min-height: 20px;")
+            b.clicked.connect(slot)
+            preset_row.addWidget(b)
+        sec_layers.body_layout.addLayout(preset_row)
+
+        # Dynamic per-layer rows — rebuilt by _rebuild_layer_controls()
+        self._layer_ctrl_container = QWidget()
+        self._layer_ctrl_layout    = QVBoxLayout(self._layer_ctrl_container)
+        self._layer_ctrl_layout.setContentsMargins(0, 4, 0, 0)
+        self._layer_ctrl_layout.setSpacing(4)
+        lbl_placeholder = QLabel("Run analysis to populate layers")
+        lbl_placeholder.setStyleSheet("color: #6870a0; font-size: 11px; font-style: italic;")
+        self._layer_ctrl_layout.addWidget(lbl_placeholder)
+        sec_layers.body_layout.addWidget(self._layer_ctrl_container)
+
+        # VSI + Layer Controls excluded from Collapse/Expand All (they manage themselves)
         self._all_sections = [sec_queue, sec_param, sec_act, sec_export]
+        self._all_sections_all = [sec_queue, sec_param, sec_act, sec_export, sec_layers]
 
         self.layout.addWidget(sec_queue)
         self.layout.addWidget(sec_param)
         self.layout.addWidget(sec_act)
         self.layout.addWidget(sec_export)
+        self.layout.addWidget(sec_layers)
         self.layout.addWidget(sec_vsi)
         self.layout.addStretch(1)
 
@@ -294,6 +578,8 @@ class CalciumControls(QWidget):
 
         # Register both panels in napari's View menu once the main window is fully built
         QTimer.singleShot(300, self._register_view_menu_actions)
+        # Apply initial theme to napari's built-in dock panels after they render
+        QTimer.singleShot(500, lambda: self._apply_napari_dock_theme(self._theme))
 
     # Bug 5: clean up the bottom dock when the controls panel is closed
     def closeEvent(self, event):
@@ -308,6 +594,12 @@ class CalciumControls(QWidget):
             self.viewer.mouse_drag_callbacks.remove(self.results_widget.on_click)
         except (ValueError, AttributeError):
             pass
+        try:
+            gw = getattr(self.results_widget, '_graph_window', None)
+            if gw is not None:
+                gw.hide()
+        except Exception:
+            pass
         super().closeEvent(event)
 
     # Bug 4: restore the bottom panel after user closes it; recreate if C++ object was deleted
@@ -321,6 +613,10 @@ class CalciumControls(QWidget):
         except RuntimeError:
             # Dock's C++ object was deleted when the user closed it — recreate it
             self._recreate_results_dock()
+
+    def _show_graph_window(self):
+        if hasattr(self, 'results_widget'):
+            self.results_widget._show_graph_popup()
 
     def _recreate_results_dock(self):
         vid = id(self.viewer)
@@ -455,10 +751,15 @@ class CalciumControls(QWidget):
         pts.edge_color = 'transparent'
         pts.mode       = 'pan_zoom'
 
+        # Bug 1 fix: restore processed_results so "Verify, Save & Go Next" isn't blocked
+        self.processed_results = results
+        # Bug 4 fix: keep spin_bin in sync with the analysis that produced the current overlays
+        self.spin_bin.setValue(bin_size)
         self.results_widget.results         = results
         self.results_widget.bin_size        = bin_size
         self.results_widget.selected_coords = state['selected_coords']
         self.results_widget.refresh_ui()
+        QTimer.singleShot(50, self._rebuild_layer_controls)
 
     def load_file(self, fname):
         try:
@@ -466,6 +767,7 @@ class CalciumControls(QWidget):
             self._snapshot_ui_state()
 
             self.viewer.layers.clear()
+            self._rebuild_layer_controls()
             self.raw_stack = load_image(fname)
 
             if self.raw_stack.ndim == 2:
@@ -473,6 +775,7 @@ class CalciumControls(QWidget):
 
             self.viewer.add_image(self.raw_stack, name=os.path.basename(fname))
             self.last_path = fname
+            self.lbl_current_file.setText(os.path.basename(fname))
             self.btn_run.setEnabled(True)
 
             # Bug 10: reset analysis state for files not yet processed
@@ -499,7 +802,7 @@ class CalciumControls(QWidget):
                 est_dur = T / max(val, 0.001) if is_fps else val
                 if est_dur > 300 or est_dur < 1:
                     self.lbl_frames.setText(
-                        f"⚠ No FPS in file metadata — current setting gives "
+                        f"No FPS in file metadata — current setting gives "
                         f"{est_dur:.0f}s for {T} frames. Please set FPS/Duration correctly!"
                     )
                     self.lbl_frames.setStyleSheet(
@@ -552,6 +855,8 @@ class CalciumControls(QWidget):
             self._results_cache = {k: v for k, v in self._results_cache.items() if k[0] != path}
             self._verified_paths.discard(path)
             self._file_states.pop(path, None)
+            # Bug 3 fix: also purge cached UI state so re-adding the file starts fresh
+            self._file_ui_state.pop(path, None)
             # UI #3+4: update counter and disable export if nothing left
             n_cells = len(self.master_results)
             n_files = len(self._verified_paths)
@@ -669,6 +974,7 @@ class CalciumControls(QWidget):
             self.results_widget.set_data(results, s)
             if self.chk_auto.isChecked():
                 self.results_widget.random_sample()
+            QTimer.singleShot(50, self._rebuild_layer_controls)
 
     # ------------------------------------------------------------------
     # Export workflow
@@ -754,19 +1060,43 @@ class CalciumControls(QWidget):
                 df_metrics.to_excel(writer, sheet_name='Metrics', index=False)
 
                 if self.master_traces:
-                    time_ref = self.master_traces[0]['time']
-                    df_traces = pd.DataFrame({'Time (s)': time_ref})
+                    # Bug 2 fix: different files may have different frame counts / FPS.
+                    # Group traces by file so each file's time column is accurate.
+                    # If all files share the same time axis (same length), use a
+                    # single compact format; otherwise write per-file time blocks.
+                    from collections import defaultdict
+                    file_groups = defaultdict(list)
                     for tr in self.master_traces:
-                        col_label = (
-                            f"{os.path.splitext(tr['Filename'])[0]}"
-                            f"_P{tr['Cell'].lstrip('P')}"
-                            f"_Y{tr['Y']}X{tr['X']}"
-                        )
-                        sig = tr['signal']
-                        n   = len(df_traces)
-                        if len(sig) < n:
-                            sig = sig + [np.nan] * (n - len(sig))
-                        df_traces[col_label] = sig[:n]
+                        file_groups[tr['Filename']].append(tr)
+
+                    all_same_length = len({len(tr['time']) for tr in self.master_traces}) == 1
+
+                    if all_same_length:
+                        time_ref  = self.master_traces[0]['time']
+                        df_traces = pd.DataFrame({'Time (s)': time_ref})
+                        for tr in self.master_traces:
+                            col_label = (
+                                f"{os.path.splitext(tr['Filename'])[0]}"
+                                f"_P{tr['Cell'].lstrip('P')}"
+                                f"_Y{tr['Y']}X{tr['X']}"
+                            )
+                            df_traces[col_label] = tr['signal']
+                    else:
+                        # Different lengths — write each file's time+signals as
+                        # adjacent column blocks; pad shorter blocks with NaN.
+                        max_len = max(len(tr['time']) for tr in self.master_traces)
+                        df_traces = pd.DataFrame()
+                        for fname, trs in file_groups.items():
+                            stub = os.path.splitext(fname)[0]
+                            time_col  = list(trs[0]['time']) + [np.nan] * (max_len - len(trs[0]['time']))
+                            df_traces[f"{stub}_Time(s)"] = time_col
+                            for tr in trs:
+                                col_label = (
+                                    f"{stub}_P{tr['Cell'].lstrip('P')}"
+                                    f"_Y{tr['Y']}X{tr['X']}"
+                                )
+                                sig = list(tr['signal']) + [np.nan] * (max_len - len(tr['signal']))
+                                df_traces[col_label] = sig
                     df_traces.to_excel(writer, sheet_name='Traces', index=False)
 
             n_sheets = 2 if self.master_traces else 1
@@ -797,13 +1127,254 @@ class CalciumControls(QWidget):
         self.conv_worker.start()
 
     def _toggle_collapse_all(self):
-        """Collapse all sections if any are expanded; expand all if all are collapsed."""
-        self._collapsed_all = not self._collapsed_all
+        """Collapse all sections if any are expanded; expand all if all are collapsed.
+        Reads actual section state rather than a flag so manual expand/collapse
+        by the user never desynchronises the button label."""
+        any_open = any(s.is_expanded() for s in self._all_sections)
         for sec in self._all_sections:
-            sec.set_expanded(not self._collapsed_all)
+            sec.set_expanded(not any_open)
         self._btn_collapse_all.setText(
-            "⊞  Expand All" if self._collapsed_all else "⊟  Collapse All"
+            "Expand All" if any_open else "Collapse All"
         )
+
+    # ------------------------------------------------------------------
+    # Dark / Light theme
+    # ------------------------------------------------------------------
+
+    def _apply_header_theme(self, theme: str = 'dark'):
+        """Update only the header widget's stylesheet."""
+        bg  = 'qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #252840,stop:1 #1e2130)'
+        bdr = '#5c7cfa'
+        tc  = '#90caf9'
+        sc  = '#5a6488'
+        self._header_widget.setStyleSheet(
+            f"QWidget {{ background: {bg}; border-bottom: 2px solid {bdr}; }}"
+        )
+        self.lbl_title.setStyleSheet(
+            f"font-size: 13px; font-weight: 700; color: {tc}; "
+            "letter-spacing: 0.5px; background: transparent; border: none;"
+        )
+        self.lbl_current_file.setStyleSheet(
+            f"font-size: 10px; color: {sc}; background: transparent; border: none;"
+        )
+
+    def _apply_theme(self):
+        self.setStyleSheet(_PANEL_STYLE_DARK)
+        self._apply_header_theme()
+        for sec in self._all_sections_all:
+            sec.apply_theme('dark')
+        if hasattr(self, 'results_widget'):
+            self.results_widget.apply_theme('dark')
+        self._rebuild_layer_controls()
+        self._apply_napari_dock_theme('dark')
+
+    def _apply_napari_dock_theme(self, theme: str = 'dark'):
+        """Apply CTA colour palette to napari's layer list and layer controls panels."""
+        dock_bg   = '#1e2130'
+        widget_bg = '#171a2c'
+        text_c    = '#c8d0ec'
+        border_c  = '#3a3e58'
+        sel_bg    = '#3d4570'
+        btn_bg    = '#272b42'
+        btn_hover = '#343857'
+        input_bg  = '#232640'
+        scroll_h  = '#404870'
+
+        napari_sheet = f"""
+QWidget {{ background: {dock_bg}; color: {text_c}; font-size: 12px; }}
+QListWidget, QTreeWidget {{
+    background: {widget_bg}; border: 1px solid {border_c}; border-radius: 4px;
+    color: {text_c};
+}}
+QListWidget::item, QTreeWidget::item {{
+    min-height: 32px; padding: 3px 6px; border-radius: 2px;
+}}
+QListWidget::item:selected, QTreeWidget::item:selected {{
+    background: {sel_bg}; color: #ffffff;
+}}
+QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected {{
+    background: {btn_bg};
+}}
+QPushButton {{
+    background: {btn_bg}; color: {text_c}; border: 1px solid {border_c};
+    border-radius: 4px; padding: 3px 8px; min-height: 22px;
+}}
+QPushButton:hover {{ background: {btn_hover}; }}
+QSlider::groove:horizontal {{ background: {border_c}; height: 4px; border-radius: 2px; }}
+QSlider::handle:horizontal {{
+    background: #5c7cfa; width: 10px; height: 10px;
+    margin: -3px 0; border-radius: 5px; border: none;
+}}
+QComboBox {{
+    background: {input_bg}; border: 1px solid {border_c}; border-radius: 4px;
+    padding: 3px 6px; color: {text_c};
+}}
+QScrollBar:vertical {{
+    background: {widget_bg}; width: 6px; border-radius: 3px;
+}}
+QScrollBar::handle:vertical {{ background: {scroll_h}; border-radius: 3px; min-height: 20px; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+QLabel {{ background: transparent; color: {text_c}; }}
+QCheckBox {{ color: {text_c}; }}
+QCheckBox::indicator {{
+    width: 13px; height: 13px; border: 1px solid {border_c};
+    border-radius: 3px; background: {input_bg};
+}}
+QCheckBox::indicator:checked {{ background: #5c7cfa; border-color: #5c7cfa; }}
+QTabBar::tab {{
+    background: {btn_bg}; color: {text_c}; border: 1px solid {border_c};
+    padding: 4px 10px; min-width: 60px; min-height: 22px;
+}}
+QTabBar::tab:selected {{ background: {widget_bg}; border-bottom-color: {widget_bg}; }}
+QTabBar::tab:hover:!selected {{ background: {btn_hover}; }}
+QTabWidget::pane {{ border: 1px solid {border_c}; }}
+"""
+        try:
+            qt_viewer = self.viewer.window._qt_viewer
+            for attr in ('dockLayerList', 'dockLayerControls'):
+                dock = getattr(qt_viewer, attr, None)
+                if dock is not None:
+                    dock.setStyleSheet(napari_sheet)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Layer Controls (section 6)
+    # ------------------------------------------------------------------
+
+    def _rebuild_layer_controls(self):
+        """Clear and repopulate the per-layer rows in section 6."""
+        # Clear existing rows
+        while self._layer_ctrl_layout.count():
+            item = self._layer_ctrl_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        theme = self._theme
+        muted = '#8890b0' if theme == 'dark' else '#5060a0'
+        row_bg = '#1e2238' if theme == 'dark' else '#e8f0fc'
+
+        visible = [n for n in _LAYER_META if n in self.viewer.layers]
+
+        if not visible:
+            lbl = QLabel("Run analysis to populate layers")
+            lbl.setStyleSheet(f"color: {muted}; font-size: 11px; font-style: italic;")
+            self._layer_ctrl_layout.addWidget(lbl)
+            return
+
+        from qtpy.QtWidgets import QSlider, QFrame
+        for name in visible:
+            layer = self.viewer.layers[name]
+            meta  = _LAYER_META[name]
+            is_image = hasattr(layer, 'colormap')
+
+            frame = QFrame()
+            frame.setStyleSheet(
+                f"QFrame {{ background: {row_bg}; border-radius: 5px; }}"
+            )
+            frame_lay = QVBoxLayout(frame)
+            frame_lay.setContentsMargins(6, 4, 6, 4)
+            frame_lay.setSpacing(3)
+
+            # ── Top row: visibility · swatch · name · opacity ──
+            top = QHBoxLayout()
+            top.setSpacing(5)
+
+            chk_vis = QCheckBox()
+            chk_vis.setChecked(layer.visible)
+            chk_vis.setFixedWidth(18)
+            chk_vis.setToolTip("Toggle layer visibility")
+            chk_vis.toggled.connect(lambda v, n=name: self._set_layer_visible(n, v))
+
+            swatch = QLabel("■")
+            swatch.setStyleSheet(
+                f"color: {meta['color']}; font-size: 14px; background: transparent;"
+            )
+            swatch.setFixedWidth(16)
+
+            name_lbl = QLabel(name)
+            name_lbl.setStyleSheet("font-size: 11px; background: transparent;")
+
+            pct_lbl = QLabel(f"{int(layer.opacity * 100)}%")
+            pct_lbl.setFixedWidth(30)
+            pct_lbl.setStyleSheet(f"font-size: 10px; color: {muted}; background: transparent;")
+
+            slider = QSlider(Qt.Orientation.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(int(layer.opacity * 100))
+            slider.setFixedWidth(58)
+            slider.setToolTip("Layer opacity")
+            slider.valueChanged.connect(
+                lambda v, n=name, l=pct_lbl: (self._set_layer_opacity(n, v / 100), l.setText(f"{v}%"))
+            )
+
+            top.addWidget(chk_vis)
+            top.addWidget(swatch)
+            top.addWidget(name_lbl, 1)
+            top.addWidget(slider)
+            top.addWidget(pct_lbl)
+            frame_lay.addLayout(top)
+
+            # ── Colormap row (image layers only) ──
+            if is_image and meta['colormaps']:
+                cmap_row = QHBoxLayout()
+                cmap_row.setContentsMargins(34, 0, 0, 0)
+                cmap_lbl = QLabel("Colormap:")
+                cmap_lbl.setStyleSheet(
+                    f"font-size: 10px; color: {muted}; background: transparent;"
+                )
+                cmap_combo = QComboBox()
+                cmap_combo.setStyleSheet("font-size: 10px;")
+                for cm in meta['colormaps']:
+                    cmap_combo.addItem(cm)
+                current_cmap = getattr(layer.colormap, 'name', str(layer.colormap))
+                idx = cmap_combo.findText(current_cmap)
+                if idx >= 0:
+                    cmap_combo.setCurrentIndex(idx)
+                cmap_combo.currentTextChanged.connect(
+                    lambda cm, n=name: self._set_layer_colormap(n, cm)
+                )
+                cmap_row.addWidget(cmap_lbl)
+                cmap_row.addWidget(cmap_combo, 1)
+                frame_lay.addLayout(cmap_row)
+
+            self._layer_ctrl_layout.addWidget(frame)
+
+    def _set_layer_visible(self, name: str, visible: bool):
+        if name in self.viewer.layers:
+            self.viewer.layers[name].visible = visible
+
+    def _set_layer_opacity(self, name: str, value: float):
+        if name in self.viewer.layers:
+            self.viewer.layers[name].opacity = value
+
+    def _set_layer_colormap(self, name: str, cmap_name: str):
+        if name in self.viewer.layers:
+            try:
+                self.viewer.layers[name].colormap = cmap_name
+            except Exception:
+                pass
+
+    def _layers_all_on(self):
+        for name in _LAYER_META:
+            if name in self.viewer.layers:
+                self.viewer.layers[name].visible = True
+        self._rebuild_layer_controls()
+
+    def _layers_overlays_only(self):
+        if self.last_path:
+            raw_name = os.path.basename(self.last_path)
+            for layer in self.viewer.layers:
+                layer.visible = layer.name != raw_name
+        self._rebuild_layer_controls()
+
+    def _layers_raw_only(self):
+        if self.last_path:
+            raw_name = os.path.basename(self.last_path)
+            for layer in self.viewer.layers:
+                layer.visible = (layer.name == raw_name)
+        self._rebuild_layer_controls()
 
     def _register_view_menu_actions(self):
         """Add CTA Controls and Traces & Metrics toggles to napari's View menu."""
@@ -888,22 +1459,48 @@ class ResultsWidget(QWidget):
 
         self.setMinimumHeight(180)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setStyleSheet(_PANEL_STYLE)
+        self._theme = 'dark'
 
         import matplotlib.pyplot as plt
         cmap        = plt.get_cmap('tab20')
         self.colors = [matplotlib.colors.to_hex(cmap(i)) for i in np.linspace(0, 1, 50)]
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(4)
 
         ctrl = QHBoxLayout()
-        ctrl.addWidget(QLabel("Max Points:"))
+        ctrl.setSpacing(6)
+        lbl_max = QLabel("Max Points:")
+        lbl_max.setStyleSheet("font-size: 11px; color: #8890b0;")
+        ctrl.addWidget(lbl_max)
         self.spin_max   = QSpinBox(); self.spin_max.setRange(1, 50); self.spin_max.setValue(6)
         self.btn_random = QPushButton("Random Sample")
+        self.btn_random.setStyleSheet(
+            "QPushButton { background: #252840; border: 1px solid #3a3e58; color: #c8d0ec;"
+            "  border-radius: 4px; padding: 4px 10px; font-size: 11px; }"
+            "QPushButton:hover { background: #2d3255; border-color: #5c7cfa; color: #e8ecff; }"
+        )
         self.btn_random.clicked.connect(self.random_sample)
-        self.btn_clear  = QPushButton("Clear Selection")
+        self.btn_clear  = QPushButton("Clear")
+        self.btn_clear.setStyleSheet(
+            "QPushButton { background: #2d1a1a; border: 1px solid #5c2020; color: #e57373;"
+            "  border-radius: 4px; padding: 4px 10px; font-size: 11px; }"
+            "QPushButton:hover { background: #3d2020; border-color: #8c3030; color: #ff8a80; }"
+        )
         self.btn_clear.clicked.connect(self.clear_all)
         self.btn_save   = QPushButton("Save Graph")
+        self.btn_save.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #4a72e0, stop:1 #3558b8);"
+            "  color: white; font-weight: bold; font-size: 11px;"
+            "  border: 1px solid #3050a0; border-radius: 4px; padding: 4px 12px;"
+            "}"
+            "QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "  stop:0 #5a84f4, stop:1 #4468cc); }"
+        )
         self.btn_save.clicked.connect(self.save_graph)
         ctrl.addWidget(self.spin_max)
         ctrl.addWidget(self.btn_random)
@@ -912,14 +1509,29 @@ class ResultsWidget(QWidget):
         ctrl.addWidget(self.btn_save)
         layout.addLayout(ctrl)
 
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
-
         self.canvas = FigureCanvas(Figure())
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.canvas.figure.set_tight_layout(True)
+        # Dark theme — match the panel background
+        self.canvas.figure.patch.set_facecolor('#171a2c')
         self.ax = self.canvas.figure.add_subplot(111)
-        self.ax.set_xlabel("Time (s)", fontweight='bold')
-        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold')
+        self.ax.set_facecolor('#1e2130')
+        self.ax.tick_params(colors='#8890b0', labelsize=8)
+        for spine in self.ax.spines.values():
+            spine.set_edgecolor('#3a3e58')
+        self.ax.set_xlabel("Time (s)", fontweight='bold', color='#8890b0')
+        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold', color='#8890b0')
+
+        # Interaction state — graph ↔ table two-way sync
+        self._trace_lines       = []   # Line2D objects, index-matched to selected_coords
+        self._selected_trace    = None # int index of highlighted trace, or None
+        self._picked_this_click = False
+        self._syncing           = False
+        self.canvas.mpl_connect('pick_event',         self._on_graph_pick)
+        self.canvas.mpl_connect('button_press_event', self._on_canvas_click)
+
+        self._graph_window = GraphWindow(self)
+        self._graph_window.hide()
 
         self.table = QTableWidget()
         cols = [
@@ -952,16 +1564,43 @@ class ResultsWidget(QWidget):
             self.table.horizontalHeaderItem(i).setToolTip(tip)
         # Bug 7: stretch columns to fill available width instead of sizing to content
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.itemSelectionChanged.connect(self._on_table_select)
 
-        self.splitter.addWidget(self.canvas)
-        self.splitter.addWidget(self.table)
-        self.splitter.setStretchFactor(0, 1)
-        self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([800, 1200])  # UI #10: 40/60 default split
-        layout.addWidget(self.splitter)
+        self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._content_splitter.addWidget(self.canvas)
+        self._content_splitter.addWidget(self.table)
+        self._content_splitter.setStretchFactor(0, 1)
+        self._content_splitter.setStretchFactor(1, 1)
+        layout.addWidget(self._content_splitter)
+
+        # Force equal split once the dock widget has been shown and sized
+        QTimer.singleShot(400, self._init_equal_split)
 
         self.viewer.mouse_drag_callbacks.append(self.on_click)
         self.viewer.dims.events.current_step.connect(self.update_points_z)
+
+    def apply_theme(self, theme: str = 'dark'):
+        self._theme = 'dark'
+        self.setStyleSheet(_PANEL_STYLE_DARK)
+        self.canvas.figure.patch.set_facecolor('#171a2c')
+        self.ax.set_facecolor('#1e2130')
+        self.ax.tick_params(colors='#8890b0')
+        for sp in self.ax.spines.values():
+            sp.set_edgecolor('#3a3e58')
+        self.ax.grid(True, color='#2e3248', linestyle='--', linewidth=0.5, alpha=0.7)
+        self.btn_random.setStyleSheet(
+            "QPushButton { background:#252840; border:1px solid #3a3e58; color:#c8d0ec;"
+            "  border-radius:4px; padding:4px 10px; font-size:11px; }"
+            "QPushButton:hover { background:#2d3255; border-color:#5c7cfa; color:#e8ecff; }"
+        )
+        self.btn_clear.setStyleSheet(
+            "QPushButton { background:#2d1a1a; border:1px solid #5c2020; color:#e57373;"
+            "  border-radius:4px; padding:4px 10px; font-size:11px; }"
+            "QPushButton:hover { background:#3d2020; border-color:#8c3030; color:#ff8a80; }"
+        )
+        if hasattr(self, '_graph_window') and self._graph_window is not None:
+            self._graph_window.apply_theme('dark')
+        self.canvas.draw_idle()
 
     def set_data(self, results, bin_size):
         self.results  = results
@@ -1065,6 +1704,20 @@ class ResultsWidget(QWidget):
         if path:
             self.canvas.figure.savefig(path, bbox_inches='tight', dpi=300)
 
+    def _show_graph_popup(self):
+        if self._graph_window is None:
+            return
+        if self.canvas.parent() is not self._graph_window:
+            self._graph_window.layout().addWidget(self.canvas)
+        n = max(1, len(self.selected_coords))
+        self._graph_window.auto_resize(n)
+        fname = getattr(self.controls, 'last_path', None)
+        if fname:
+            self._graph_window.setWindowTitle(os.path.basename(fname))
+        self._graph_window.show()
+        self._graph_window.raise_()
+        self._graph_window.activateWindow()
+
     def on_click(self, viewer, event):
         """Generator callback — distinguishes plain clicks from pan drags.
 
@@ -1116,14 +1769,32 @@ class ResultsWidget(QWidget):
     def refresh_ui(self):
         self.ax.clear()
         self.table.setRowCount(0)
-        self.ax.set_xlabel("Time (s)", fontweight='bold')
-        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold')
-        self.ax.grid(True, alpha=0.3)
+        self._trace_lines    = []
+        self._selected_trace = None
+
+        # Re-apply theme colours after clear()
+        _dark   = getattr(self, '_theme', 'dark') == 'dark'
+        _fig_bg = '#171a2c' if _dark else '#f0f4fc'
+        _ax_bg  = '#1e2130' if _dark else '#ffffff'
+        _tc     = '#8890b0' if _dark else '#5060a0'
+        _sc     = '#3a3e58' if _dark else '#b8c4e0'
+        _gc     = '#2e3248' if _dark else '#c8d4ec'
+        _title_c = '#74c0fc' if _dark else '#1a3080'
+        _ph_c   = '#404870' if _dark else '#8898cc'
+        _leg_tc = '#c8d0ec' if _dark else '#1a2040'
+        self.canvas.figure.patch.set_facecolor(_fig_bg)
+        self.ax.set_facecolor(_ax_bg)
+        self.ax.tick_params(colors=_tc, labelsize=8)
+        for spine in self.ax.spines.values():
+            spine.set_edgecolor(_sc)
+        self.ax.set_xlabel("Time (s)", fontweight='bold', color=_tc)
+        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold', color=_tc)
+        self.ax.grid(True, color=_gc, linestyle='--', linewidth=0.5, alpha=0.7)
 
         # UI #7: show current filename as the plot title
         fname = getattr(self.controls, 'last_path', None)
         if fname:
-            self.ax.set_title(os.path.basename(fname), fontsize=9, color='#90CAF9', pad=3)
+            self.ax.set_title(os.path.basename(fname), fontsize=9, color=_title_c, pad=3)
 
         if not self.results or not self.selected_coords:
             # UI #6: placeholder text when no cells are selected
@@ -1133,7 +1804,7 @@ class ResultsWidget(QWidget):
                 transform=self.ax.transAxes,
                 ha='center', va='center',
                 fontsize=11, style='italic',
-                color='#888888',
+                color=_ph_c,
             )
             self.canvas.draw()
             return
@@ -1156,7 +1827,9 @@ class ResultsWidget(QWidget):
             raw   = raw_sigs[idx] if raw_sigs is not None else None
             color = self.colors[i % len(self.colors)]
 
-            self.ax.plot(time, sig, color=color, label=f"P{i+1}", linewidth=1.2)
+            (line,) = self.ax.plot(time, sig, color=color, label=f"P{i+1}",
+                                    linewidth=1.2, picker=5)
+            self._trace_lines.append(line)
 
             if len(beat_peaks) > 0:
                 self.ax.plot(time[beat_peaks], sig[beat_peaks], 'v',
@@ -1193,7 +1866,11 @@ class ResultsWidget(QWidget):
             text_labels.append(f"P{i+1}")
 
         if self.selected_coords:
-            self.ax.legend(loc='upper right', fontsize='small')
+            leg = self.ax.legend(loc='upper right', fontsize='small')
+            leg.get_frame().set_facecolor(_ax_bg)
+            leg.get_frame().set_edgecolor(_sc)
+            for text in leg.get_texts():
+                text.set_color(_leg_tc)
         self.canvas.draw()
 
         if 'Selection' in self.viewer.layers:
@@ -1206,6 +1883,80 @@ class ResultsWidget(QWidget):
             else:
                 layer.data = np.empty((0, 3))
             layer.refresh()
+
+        # Keep graph window title and size in sync whenever traces change
+        if hasattr(self, '_graph_window') and self._graph_window is not None:
+            fname = getattr(self.controls, 'last_path', None)
+            if fname:
+                self._graph_window.setWindowTitle(os.path.basename(fname))
+            if self._graph_window.isVisible():
+                self._graph_window.auto_resize(len(self.selected_coords))
+
+    # ── Graph ↔ Table interaction ────────────────────────────────────────────
+
+    def _on_graph_pick(self, event):
+        """Fired when a pickable artist (trace line) is clicked in the graph."""
+        if not isinstance(event.artist, Line2D):
+            return
+        try:
+            idx = self._trace_lines.index(event.artist)
+        except ValueError:
+            return
+        self._picked_this_click = True
+        self._toggle_highlight(idx)
+
+    def _on_canvas_click(self, event):
+        """Fired on every canvas click; deselects if nothing was picked."""
+        if not self._picked_this_click:
+            self._toggle_highlight(None)
+        self._picked_this_click = False
+
+    def _on_table_select(self):
+        """Fired when the table row selection changes."""
+        if self._syncing:
+            return
+        rows = self.table.selectionModel().selectedRows()
+        idx  = rows[0].row() if rows else None
+        self._selected_trace = idx
+        self._apply_highlight()
+
+    def _toggle_highlight(self, idx):
+        """Select idx, or deselect if it's already selected."""
+        if self._selected_trace == idx:
+            idx = None
+        self._selected_trace = idx
+        self._apply_highlight()
+
+    def _apply_highlight(self):
+        """Dim all traces except the selected one; sync table row selection."""
+        idx = self._selected_trace
+        for i, line in enumerate(self._trace_lines):
+            if idx is None:
+                line.set_alpha(1.0)
+                line.set_linewidth(1.2)
+            elif i == idx:
+                line.set_alpha(1.0)
+                line.set_linewidth(2.5)
+                line.set_zorder(5)
+            else:
+                line.set_alpha(0.2)
+                line.set_linewidth(1.0)
+                line.set_zorder(2)
+        self._syncing = True
+        if idx is None:
+            self.table.clearSelection()
+        else:
+            self.table.selectRow(idx)
+        self._syncing = False
+        self.canvas.draw_idle()
+
+    def _init_equal_split(self):
+        w = self._content_splitter.width()
+        if w > 20:
+            half = w // 2
+            self._content_splitter.setSizes([half, half])
+        else:
+            QTimer.singleShot(200, self._init_equal_split)
 
     def update_points_z(self, event):
         if not self.results or 'Selection' not in self.viewer.layers:
