@@ -526,7 +526,7 @@ def _fit_decay_tau(signal, time_stamps, peak_idx, end_idx, baseline, amp):
         return np.nan
 
 
-def extract_beat_averaged_features(time_stamps, signal, beat_peaks):
+def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=None):
     """
     Compute kinetic parameters for every detected beat and return beat-averages.
 
@@ -584,60 +584,63 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks):
 
         baseline  = signal[start_idx]
         amp       = signal[peak_idx] - baseline
-        if amp < sig_range * 0.05:          # beat too small → skip
+        if amp <= 0 or amp < sig_range * 0.05:   # skip inverted or too-small beats
             continue
+
+        # F0 is the absolute diastolic fluorescence — must come from the raw
+        # (pre-correction) signal; the corrected signal sits at ~0 at diastole
+        # by construction after photobleach subtraction.
+        F0 = raw_signal[start_idx] if raw_signal is not None else baseline
 
         t_start   = time_stamps[start_idx]
         peak_time = time_stamps[peak_idx]
 
-        # ── Decay window: peak → inter-beat valley ────────────────────────────
-        # Extend up to 1.5 × beat period but clip to the valley between beats
-        # so we don't trespass into the next beat's upstroke.
-        end_decay = min(len(signal), peak_idx + int(med_period * 1.5))
+        # ── Decay windows ─────────────────────────────────────────────────────
+        # end_search: full 1.5× period — used for all threshold crossings so
+        #             they are never NaN just because beats are closely spaced.
+        # end_tau:    clipped to the inter-beat valley — used only for the exp
+        #             fit so we don't fit into the next beat's upstroke.
+        end_search = min(len(signal), peak_idx + int(med_period * 1.5))
+        end_tau    = end_search
         next_peaks = beat_peaks[beat_peaks > peak_idx]
         if len(next_peaks) > 0:
-            nxt = int(next_peaks[0])
-            region = signal[peak_idx: min(nxt, end_decay)]
+            nxt    = int(next_peaks[0])
+            region = signal[peak_idx: min(nxt, end_search)]
             if len(region) > 1:
                 valley_rel = int(np.argmin(region))
-                end_decay  = min(end_decay, peak_idx + valley_rel + 1)
+                end_tau    = min(end_search, peak_idx + valley_rel + 1)
 
-        # ── Rise crossings (directly measured) ───────────────────────────────
+        # ── Rise crossings ───────────────────────────────────────────────────
         levs_rise = [baseline + f * amp for f in (0.1, 0.5, 0.9)]
         t10_on_t, t50_on_t, t90_on_t = [
             get_time_at_level(time_stamps, signal, start_idx, peak_idx + 1, lv, 'rising')
             for lv in levs_rise
         ]
 
-        # ── Decay crossings (directly measured within beat window) ───────────
-        t10_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+        # ── Decay crossings (full search window) ─────────────────────────────
+        t10_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                        baseline + 0.9 * amp, 'decay')   # 10 % decayed
-        t50_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+        t50_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                        baseline + 0.5 * amp, 'decay')   # 50 % decayed
 
-        # ── Exponential fit for T90_OFF and T_OFF ────────────────────────────
-        # Using the exp fit avoids the noisy-near-baseline problem:
-        #   T90_OFF = τ × ln(10)   (signal at 10 % remaining)
-        #   T_OFF   = τ × ln(20)   (signal at 5 % remaining ≈ practical baseline)
-        #   Ratio   = ln(20)/ln(10) ≈ 1.30  (constant, no more wild gap)
-        tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_decay, baseline, amp)
+        # ── Exponential fit for T90_OFF and T_OFF (valley-clipped window) ────
+        tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_tau, baseline, amp)
 
         if not np.isnan(tau_ms):
             T90_OFF  = tau_ms * np.log(10)    # ≈ 2.303 × τ
             T_OFF_ms = tau_ms * np.log(20)    # ≈ 2.996 × τ
         else:
-            # Direct fallback for T90_OFF
-            t90_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+            # Direct fallback — use full search window so NaN is not caused by a short window
+            t90_off_t = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                            baseline + 0.1 * amp, 'decay')
             T90_OFF   = dms(t90_off_t, peak_time)
-            # Direct fallback for T_OFF at 5 % level
-            t_off_5   = get_time_at_level(time_stamps, signal, peak_idx, end_decay,
+            t_off_5   = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                            baseline + 0.05 * amp, 'decay')
             T_OFF_ms  = dms(t_off_5, peak_time)
 
         per_beat.append({
             'Amp':      amp,
-            'F0':       baseline,
+            'F0':       F0,
             'T_ON_ms':  (peak_time - t_start) * 1000,
             'T10_ON':   dms(t10_on_t, t_start),
             'T50_ON':   dms(t50_on_t, t_start),
@@ -1043,6 +1046,8 @@ class AnalysisWorker(QThread):
                             baseline = f_i(time_stamps)
                         else:
                             baseline = _bleach_envelope(sig, T_bin)
+                    # Clamp: a photobleach baseline cannot physically exceed the signal
+                    baseline = np.minimum(baseline, sig)
                     corrected_signals[i] = sig - baseline
                 except Exception:
                     corrected_signals[i] = sig - np.min(sig)
@@ -1108,6 +1113,7 @@ class AnalysisWorker(QThread):
             self.finished.emit({
                 'clu_map':           clu_map,
                 'labels':            labels_full,
+                'raw_signals':       raw_signals,
                 'corrected_signals': corrected_signals,
                 'filtered_traces':   filtered_traces,
                 'time':              time_stamps,
@@ -1196,6 +1202,7 @@ class BatchWorker(QThread):
                             baseline = f_i(time_stamps)
                         else:
                             baseline = _bleach_envelope(sig, T_bin)
+                        baseline = np.minimum(baseline, sig)
                         corrected_signals[i] = sig - baseline
                     except Exception:
                         corrected_signals[i] = sig - np.min(sig)
