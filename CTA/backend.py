@@ -465,23 +465,17 @@ def extract_detailed_features(time_stamps, signal):
     def dms(t1, t2):
         return abs(t1 - t2) * 1000 if not np.isnan(t1) and not np.isnan(t2) else np.nan
 
-    cd = dms(t_off[2], t_on[0])
-    cd_estimated = False
-    if np.isnan(cd):
-        w50 = dms(t_off[1], t_on[1])
-        if not np.isnan(w50):
-            cd = w50 * 1.6
-            cd_estimated = True
-
-    # FIX 3: T_OFF_ms = time from peak to the point where the signal returns to
-    # baseline (F0) level, not to the next valley.  This is the physiologically
-    # correct "relaxation time" and prevents T_OFF > T90_OFF situations.
+    # T_OFF_ms = time from peak to the point where the signal returns to baseline.
     t_return = get_time_at_level(time_stamps, signal, peak_idx, end_search,
                                   baseline + 0.02 * amp, 'decay')
     T_OFF_ms = dms(t_return, peak_time)
-    # If baseline-return not found within window, fall back to next-valley time
     if np.isnan(T_OFF_ms) and end_idx < len(time_stamps):
         T_OFF_ms = dms(time_stamps[end_idx], peak_time)
+
+    # CD = T_ON + T_OFF  (onset → peak → baseline return, per Ca²⁺ transient diagram)
+    T_ON_ms_val = (peak_time - t_start) * 1000
+    cd = T_ON_ms_val + T_OFF_ms if not np.isnan(T_OFF_ms) else np.nan
+    cd_estimated = np.isnan(cd)
 
     return {
         'BPM':      (len(max_peaks) / (time_stamps[-1] - time_stamps[0])) * 60
@@ -530,9 +524,9 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
     """
     Compute kinetic parameters for every detected beat and return beat-averages.
 
-    Definitions (matching the diagram):
+    Definitions (matching the Ca²⁺ transient diagram):
       Rise (measured from transient onset):
-        T_ON_ms  = onset → peak
+        T_ON_ms  = onset → peak (100 %)
         T10_ON   = onset → 10 % amplitude crossing
         T50_ON   = onset → 50 % amplitude crossing
         T90_ON   = onset → 90 % amplitude crossing
@@ -540,17 +534,14 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
       Decay (measured from peak):
         T10_OFF  = peak → 90 % level  (10 % decayed)
         T50_OFF  = peak → 50 % level  (50 % decayed)
-        T90_OFF  = peak → 10 % level  (90 % decayed)
-        T_OFF_ms = peak → ~0 % level  (extrapolated via exp fit)
+        T90_OFF  = peak → 10 % level  (90 % decayed)  — via exp fit: τ·ln(10)
+        T_OFF_ms = peak → ~0 % level  (baseline return) — via exp fit: τ·ln(20)
 
       T90_OFF and T_OFF are computed from an exponential fit to the decay
       so that they have a stable, physically consistent relationship:
           T_OFF ≈ 1.30 × T90_OFF  (for a pure monoexponential).
-      This eliminates the large, noisy gap that appears when T_OFF is
-      estimated by a hard threshold near the noisy baseline.
 
-      CD = duration above 10 % amplitude
-         = T_ON_ms + T_OFF_ms − T10_ON   (from diagram: T10_ON crossing to F0 return)
+      CD = T_ON + T_OFF  (full duration: onset → peak → baseline return)
     """
     if beat_peaks is None or len(beat_peaks) == 0:
         return extract_detailed_features(time_stamps, signal)
@@ -596,19 +587,16 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
         peak_time = time_stamps[peak_idx]
 
         # ── Decay windows ─────────────────────────────────────────────────────
-        # end_search: full 1.5× period — used for all threshold crossings so
-        #             they are never NaN just because beats are closely spaced.
-        # end_tau:    clipped to the inter-beat valley — used only for the exp
-        #             fit so we don't fit into the next beat's upstroke.
+        # end_search: 1.5× period — generous window for threshold crossings.
+        # end_tau:    clipped to the first per-cell valley after the peak so
+        #             the exponential fit doesn't include the next upstroke.
         end_search = min(len(signal), peak_idx + int(med_period * 1.5))
-        end_tau    = end_search
-        next_peaks = beat_peaks[beat_peaks > peak_idx]
-        if len(next_peaks) > 0:
-            nxt    = int(next_peaks[0])
-            region = signal[peak_idx: min(nxt, end_search)]
-            if len(region) > 1:
-                valley_rel = int(np.argmin(region))
-                end_tau    = min(end_search, peak_idx + valley_rel + 1)
+        post_seg   = signal[peak_idx: end_search]
+        post_vs, _ = find_peaks(-post_seg, distance=max(3, med_period // 4))
+        if len(post_vs) > 0:
+            end_tau = peak_idx + int(post_vs[0]) + 1
+        else:
+            end_tau = min(len(signal), peak_idx + med_period)
 
         # ── Rise crossings ───────────────────────────────────────────────────
         levs_rise = [baseline + f * amp for f in (0.1, 0.5, 0.9)]
@@ -625,10 +613,6 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
 
         # ── Exponential fit for T90_OFF and T_OFF (valley-clipped window) ────
         tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_tau, baseline, amp)
-        # When the valley is very close, the clipped window has too few points.
-        # Retry with the full 1.5× search window before falling back to thresholds.
-        if np.isnan(tau_ms) and end_tau < end_search:
-            tau_ms = _fit_decay_tau(signal, time_stamps, peak_idx, end_search, baseline, amp)
 
         if not np.isnan(tau_ms):
             T90_OFF  = tau_ms * np.log(10)    # ≈ 2.303 × τ
@@ -674,16 +658,14 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
         result[k] = float(np.mean(vals)) if vals else np.nan
 
     total_dur = time_stamps[-1] - time_stamps[0]
-    result['BPM'] = (len(beat_peaks) / total_dur) * 60 if total_dur > 0 else 0.0
+    result['BPM'] = (len(per_beat) / total_dur) * 60 if total_dur > 0 else 0.0
 
-    # CD = duration above 10 % amplitude
-    #     = T_ON_ms + T_OFF_ms − T10_ON
-    #     (time from first 10%-rise crossing to baseline return)
     t_on   = result.get('T_ON_ms',  np.nan)
     t_off  = result.get('T_OFF_ms', np.nan)
     t10_on = result.get('T10_ON',   np.nan)
-    if not any(np.isnan(v) for v in (t_on, t_off, t10_on)):
-        result['CD'] = t_on + t_off - t10_on
+    # CD = T_ON + T_OFF  (onset → peak → baseline return, per Ca²⁺ transient diagram)
+    if not np.isnan(t_on) and not np.isnan(t_off):
+        result['CD'] = t_on + t_off
     else:
         result['CD'] = np.nan
 
@@ -1117,7 +1099,7 @@ class AnalysisWorker(QThread):
             # low-frequency photobleach artefacts, giving a cleaner correlation.
             active_filtered = filtered_traces[active_idx] if len(active_idx) > 0 \
                               else filtered_traces[:0]
-            sync_index = calculate_synchronicity(active_filtered) if len(active_idx) > 1 else 0.0
+            sync_index = calculate_synchronicity(active_filtered) if len(active_idx) > 1 else 1.0
 
             self.progress.emit(100)
 

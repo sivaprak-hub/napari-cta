@@ -30,6 +30,7 @@ def _screen_geom():
     g = screen.availableGeometry()
     return g.width(), g.height()
 
+from scipy.signal import find_peaks as _scipy_find_peaks
 from .backend import (AnalysisWorker, BatchWorker,
                        extract_detailed_features, extract_beat_averaged_features,
                        load_image, convert_single_vsi, read_file_timing,
@@ -69,11 +70,25 @@ QComboBox QAbstractItemView {
 
 QSpinBox, QDoubleSpinBox {
     background: #232640; border: 1px solid #3a3e58; border-radius: 4px;
-    padding: 3px 6px; color: #c8d0ec; min-height: 22px;
+    padding: 3px 24px 3px 6px; color: #c8d0ec; min-height: 22px;
 }
 QSpinBox:hover, QDoubleSpinBox:hover { border-color: #5a6088; }
-QSpinBox::up-button, QDoubleSpinBox::up-button,
-QSpinBox::down-button, QDoubleSpinBox::down-button { background: #2a2e48; border: none; width: 14px; }
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 18px; background: #2a2e48;
+    border-left: 1px solid #3a3e58; border-bottom: 1px solid #3a3e58;
+    border-top-right-radius: 4px;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    width: 18px; background: #2a2e48;
+    border-left: 1px solid #3a3e58;
+    border-bottom-right-radius: 4px;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #3a3e60; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 7px; height: 7px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 7px; height: 7px; }
 
 QListWidget {
     background: #171a2c; border: 1px solid #3a3e58; border-radius: 4px; padding: 2px;
@@ -391,8 +406,12 @@ class CalciumControls(QWidget):
         btn_remove     = QPushButton("Remove")
         btn_remove.setObjectName("btn_danger")
         btn_remove.clicked.connect(self.remove_selected_file)
+        btn_remove_all = QPushButton("Clear All")
+        btn_remove_all.setObjectName("btn_danger")
+        btn_remove_all.clicked.connect(self.remove_all_files)
         btn_layout.addWidget(btn_add_files)
         btn_layout.addWidget(btn_remove)
+        btn_layout.addWidget(btn_remove_all)
 
         self.chk_auto = QCheckBox("Auto-Process on Load")
         self.chk_auto.setChecked(False)
@@ -592,7 +611,7 @@ class CalciumControls(QWidget):
             del CalciumControls._results_docks[vid]
         try:
             self.viewer.mouse_drag_callbacks.remove(self.results_widget.on_click)
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, RuntimeError):
             pass
         try:
             gw = getattr(self.results_widget, '_graph_window', None)
@@ -751,8 +770,9 @@ class CalciumControls(QWidget):
         pts.edge_color = 'transparent'
         pts.mode       = 'pan_zoom'
 
-        # Bug 1 fix: restore processed_results so "Verify, Save & Go Next" isn't blocked
+        # restore processed_results so "Verify, Save & Go Next" is available again
         self.processed_results = results
+        self.btn_save_next.setEnabled(True)
         # Bug 4 fix: keep spin_bin in sync with the analysis that produced the current overlays
         self.spin_bin.setValue(bin_size)
         self.results_widget.results         = results
@@ -785,8 +805,8 @@ class CalciumControls(QWidget):
             if hasattr(self, 'results_widget'):
                 self.results_widget.reset()
 
-            # Bug 8: re-enable Verify button for the newly loaded file
-            self.btn_save_next.setEnabled(True)
+            # Verify only makes sense after analysis — re-enabled in on_analysis_done
+            self.btn_save_next.setEnabled(False)
 
             T, H, W = self.raw_stack.shape
             timing = read_file_timing(fname)
@@ -874,6 +894,32 @@ class CalciumControls(QWidget):
             if hasattr(self, 'results_widget'):
                 self.results_widget.reset()
 
+    def remove_all_files(self):
+        if self.list_widget.count() == 0:
+            return
+        if QMessageBox.question(
+            self, "Clear All Files",
+            "Remove all files from the queue and clear all cached results?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        self.list_widget.clear()
+        self._results_cache.clear()
+        self._verified_paths.clear()
+        self._file_states.clear()
+        self._file_ui_state.clear()
+        self.master_results.clear()
+        self.master_traces.clear()
+        self.raw_stack = None
+        self.last_path = None
+        self.btn_run.setEnabled(False)
+        self.btn_save_next.setEnabled(False)
+        self.lbl_master_count.setText("Verified Cells: 0")
+        self.btn_export_master.setEnabled(False)
+        self.viewer.layers.clear()
+        if hasattr(self, 'results_widget'):
+            self.results_widget.reset()
+
     # ------------------------------------------------------------------
     # Analysis
     # ------------------------------------------------------------------
@@ -930,7 +976,12 @@ class CalciumControls(QWidget):
             self._results_cache[self._pending_cache_key] = results
             del self._pending_cache_key
 
-        self.lbl_beats.setText(f"Beats detected: {results['beat_count']}")
+        _t = results['time']
+        _dur = (_t[-1] - _t[0]) if len(_t) > 1 else 0
+        _bpm = (results['beat_count'] / _dur * 60) if _dur > 0 else 0.0
+        self.lbl_beats.setText(
+            f"Beats detected: {results['beat_count']}  (~{_bpm:.0f} BPM)"
+        )
         self.lbl_sync.setText(f"Sync index: {results['sync_index']:.3f}")
         # UI #2: mark file as analysed (amber) unless already verified (green)
         if self.last_path and self._file_states.get(self.last_path) != 'verified':
@@ -1512,15 +1563,15 @@ class ResultsWidget(QWidget):
         self.canvas = FigureCanvas(Figure())
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.canvas.figure.set_tight_layout(True)
-        # Dark theme — match the panel background
-        self.canvas.figure.patch.set_facecolor('#171a2c')
+        # White graph background — easier to read traces; panel stays dark
+        self.canvas.figure.patch.set_facecolor('#ffffff')
         self.ax = self.canvas.figure.add_subplot(111)
-        self.ax.set_facecolor('#1e2130')
-        self.ax.tick_params(colors='#8890b0', labelsize=8)
+        self.ax.set_facecolor('#ffffff')
+        self.ax.tick_params(colors='#444444', labelsize=8)
         for spine in self.ax.spines.values():
-            spine.set_edgecolor('#3a3e58')
-        self.ax.set_xlabel("Time (s)", fontweight='bold', color='#8890b0')
-        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold', color='#8890b0')
+            spine.set_edgecolor('#bbbbbb')
+        self.ax.set_xlabel("Time (s)", fontweight='bold', color='#444444')
+        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold', color='#444444')
 
         # Interaction state — graph ↔ table two-way sync
         self._trace_lines       = []   # Line2D objects, index-matched to selected_coords
@@ -1582,12 +1633,13 @@ class ResultsWidget(QWidget):
     def apply_theme(self, theme: str = 'dark'):
         self._theme = 'dark'
         self.setStyleSheet(_PANEL_STYLE_DARK)
-        self.canvas.figure.patch.set_facecolor('#171a2c')
-        self.ax.set_facecolor('#1e2130')
-        self.ax.tick_params(colors='#8890b0')
+        # Graph stays white regardless of panel theme
+        self.canvas.figure.patch.set_facecolor('#ffffff')
+        self.ax.set_facecolor('#ffffff')
+        self.ax.tick_params(colors='#444444')
         for sp in self.ax.spines.values():
-            sp.set_edgecolor('#3a3e58')
-        self.ax.grid(True, color='#2e3248', linestyle='--', linewidth=0.5, alpha=0.7)
+            sp.set_edgecolor('#bbbbbb')
+        self.ax.grid(True, color='#e8e8e8', linestyle='--', linewidth=0.5, alpha=0.9)
         self.btn_random.setStyleSheet(
             "QPushButton { background:#252840; border:1px solid #3a3e58; color:#c8d0ec;"
             "  border-radius:4px; padding:4px 10px; font-size:11px; }"
@@ -1685,9 +1737,10 @@ class ResultsWidget(QWidget):
             return
 
         sigs  = self.results['corrected_signals'][active_idx]
-        amps  = np.max(sigs, axis=1) - np.min(sigs, axis=1)
+        amps  = np.nan_to_num(np.max(sigs, axis=1) - np.min(sigs, axis=1), nan=0.0)
         w     = amps ** 2
-        probs = w / np.sum(w) if np.sum(w) > 0 else None
+        total = np.sum(w)
+        probs = w / total if total > 0 else None
         n      = min(limit, len(active_idx))
         chosen = np.random.choice(active_idx, size=n, replace=False, p=probs)
 
@@ -1772,29 +1825,20 @@ class ResultsWidget(QWidget):
         self._trace_lines    = []
         self._selected_trace = None
 
-        # Re-apply theme colours after clear()
-        _dark   = getattr(self, '_theme', 'dark') == 'dark'
-        _fig_bg = '#171a2c' if _dark else '#f0f4fc'
-        _ax_bg  = '#1e2130' if _dark else '#ffffff'
-        _tc     = '#8890b0' if _dark else '#5060a0'
-        _sc     = '#3a3e58' if _dark else '#b8c4e0'
-        _gc     = '#2e3248' if _dark else '#c8d4ec'
-        _title_c = '#74c0fc' if _dark else '#1a3080'
-        _ph_c   = '#404870' if _dark else '#8898cc'
-        _leg_tc = '#c8d0ec' if _dark else '#1a2040'
-        self.canvas.figure.patch.set_facecolor(_fig_bg)
-        self.ax.set_facecolor(_ax_bg)
-        self.ax.tick_params(colors=_tc, labelsize=8)
+        # Re-apply white graph background after clear()
+        self.canvas.figure.patch.set_facecolor('#ffffff')
+        self.ax.set_facecolor('#ffffff')
+        self.ax.tick_params(colors='#444444', labelsize=8)
         for spine in self.ax.spines.values():
-            spine.set_edgecolor(_sc)
-        self.ax.set_xlabel("Time (s)", fontweight='bold', color=_tc)
-        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold', color=_tc)
-        self.ax.grid(True, color=_gc, linestyle='--', linewidth=0.5, alpha=0.7)
+            spine.set_edgecolor('#bbbbbb')
+        self.ax.set_xlabel("Time (s)", fontweight='bold', color='#444444')
+        self.ax.set_ylabel("Amplitude (a.u.)", fontweight='bold', color='#444444')
+        self.ax.grid(True, color='#e8e8e8', linestyle='--', linewidth=0.5, alpha=0.7)
 
         # UI #7: show current filename as the plot title
         fname = getattr(self.controls, 'last_path', None)
         if fname:
-            self.ax.set_title(os.path.basename(fname), fontsize=9, color=_title_c, pad=3)
+            self.ax.set_title(os.path.basename(fname), fontsize=9, color='#333333', pad=3)
 
         if not self.results or not self.selected_coords:
             # UI #6: placeholder text when no cells are selected
@@ -1804,7 +1848,7 @@ class ResultsWidget(QWidget):
                 transform=self.ax.transAxes,
                 ha='center', va='center',
                 fontsize=11, style='italic',
-                color=_ph_c,
+                color='#aaaaaa',
             )
             self.canvas.draw()
             return
@@ -1831,9 +1875,18 @@ class ResultsWidget(QWidget):
                                     linewidth=1.2, picker=5)
             self._trace_lines.append(line)
 
-            if len(beat_peaks) > 0:
-                self.ax.plot(time[beat_peaks], sig[beat_peaks], 'v',
-                             color=color, markersize=5, alpha=0.7)
+            sig_range_cell = float(np.max(sig) - np.min(sig))
+            if sig_range_cell > 1e-6:
+                dt_approx = (time[-1] - time[0]) / max(len(time) - 1, 1)
+                fps_est   = 1.0 / max(dt_approx, 1e-6)
+                cell_peaks, _ = _scipy_find_peaks(
+                    sig,
+                    prominence=sig_range_cell * 0.10,
+                    distance=max(int(fps_est * 0.5), 2),
+                )
+                if len(cell_peaks) > 0:
+                    self.ax.plot(time[cell_peaks], sig[cell_peaks], 'v',
+                                 color=color, markersize=5, alpha=0.7)
 
             m = extract_beat_averaged_features(time, sig, beat_peaks, raw_signal=raw)
             r = self.table.rowCount()
@@ -1853,8 +1906,10 @@ class ResultsWidget(QWidget):
             row_bg.setAlpha(30)
             for c_idx in range(self.table.columnCount()):
                 it = self.table.item(r, c_idx)
-                if it:
-                    it.setBackground(row_bg)
+                if it is None:
+                    it = QTableWidgetItem("")
+                    self.table.setItem(r, c_idx, it)
+                it.setBackground(row_bg)
 
             # Bug 1: use (bin_size-1)/2 offset so the dot sits at the visual center
             # of the bin as displayed by the translated overlay layers.
@@ -1867,10 +1922,10 @@ class ResultsWidget(QWidget):
 
         if self.selected_coords:
             leg = self.ax.legend(loc='upper right', fontsize='small')
-            leg.get_frame().set_facecolor(_ax_bg)
-            leg.get_frame().set_edgecolor(_sc)
+            leg.get_frame().set_facecolor('#ffffff')
+            leg.get_frame().set_edgecolor('#bbbbbb')
             for text in leg.get_texts():
-                text.set_color(_leg_tc)
+                text.set_color('#333333')
         self.canvas.draw()
 
         if 'Selection' in self.viewer.layers:
