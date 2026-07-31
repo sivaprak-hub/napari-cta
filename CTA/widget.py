@@ -160,6 +160,124 @@ QPushButton#btn_ghost:hover { color: #9090c0; border-color: #5060a0; background:
 
 _PANEL_STYLE = _PANEL_STYLE_DARK  # default theme alias
 
+_PANEL_STYLE_LIGHT = """
+QWidget { background: #f5f6fa; color: #1e2340; font-size: 12px; }
+QScrollArea, QScrollArea > QWidget > QWidget { background: #f5f6fa; border: none; }
+QScrollBar:vertical {
+    background: #dde3f5; width: 6px; border-radius: 3px; margin: 0;
+}
+QScrollBar::handle:vertical { background: #a0aed0; border-radius: 3px; min-height: 20px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+QPushButton {
+    background: #e8ecf8; color: #2a3560; border: 1px solid #c0cce8;
+    border-radius: 5px; padding: 5px 10px; min-height: 24px; font-size: 11px;
+}
+QPushButton:hover  { background: #d8e0f5; border-color: #7a8cc0; color: #1a2040; }
+QPushButton:pressed  { background: #c8d4f0; }
+QPushButton:disabled { color: #a0aec0; background: #edf0f8; border-color: #c8d4e8; }
+
+QComboBox {
+    background: #ffffff; border: 1px solid #c0cce8; border-radius: 4px;
+    padding: 3px 8px; color: #2a3560; min-height: 22px;
+}
+QComboBox:hover { border-color: #7a8cc0; }
+QComboBox::drop-down { border: none; width: 16px; }
+QComboBox QAbstractItemView {
+    background: #ffffff; border: 1px solid #c0cce8;
+    selection-background-color: #d0daf8; color: #2a3560; outline: none;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background: #ffffff; border: 1px solid #c0cce8; border-radius: 4px;
+    padding: 3px 24px 3px 6px; color: #2a3560; min-height: 22px;
+}
+QSpinBox:hover, QDoubleSpinBox:hover { border-color: #7a8cc0; }
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 18px; background: #e8ecf8;
+    border-left: 1px solid #c0cce8; border-bottom: 1px solid #c0cce8;
+    border-top-right-radius: 4px;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    width: 18px; background: #e8ecf8;
+    border-left: 1px solid #c0cce8;
+    border-bottom-right-radius: 4px;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #d8e0f5; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 7px; height: 7px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 7px; height: 7px; }
+
+QListWidget {
+    background: #ffffff; border: 1px solid #c0cce8; border-radius: 4px; padding: 2px;
+}
+QListWidget::item          { padding: 3px 6px; border-radius: 3px; }
+QListWidget::item:selected { background: #d0daf8; color: #1a2040; }
+QListWidget::item:hover:!selected { background: #e8ecf8; }
+
+QProgressBar {
+    background: #dde3f5; border: 1px solid #c0cce8; border-radius: 5px;
+    max-height: 8px; color: transparent;
+}
+QProgressBar::chunk {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #5c6bc0, stop:1 #42a5f5);
+    border-radius: 5px;
+}
+
+QCheckBox { color: #5060a0; spacing: 6px; font-size: 11px; }
+QCheckBox:hover { color: #1e2340; }
+QCheckBox::indicator {
+    width: 13px; height: 13px; border: 1px solid #c0cce8; border-radius: 3px; background: #ffffff;
+}
+QCheckBox::indicator:checked { background: #5c7cfa; border-color: #5c7cfa; }
+
+QTableWidget {
+    background: #ffffff; alternate-background-color: #f0f4fc; color: #2a3560;
+    border: 1px solid #c0cce8; border-radius: 4px; gridline-color: #dde5f5;
+    selection-background-color: #d0daf8; selection-color: #1a2040;
+}
+QHeaderView::section {
+    background: #e8ecf8; color: #3050a0; border: none;
+    border-right: 1px solid #c0cce8; border-bottom: 2px solid #5c7cfa;
+    font-weight: 600; font-size: 10px; padding: 4px 3px;
+}
+QHeaderView::section:hover { background: #d8e0f5; }
+
+QSplitter::handle            { background: #c0cce8; }
+QSplitter::handle:horizontal { width: 2px; }
+QSplitter::handle:vertical   { height: 2px; }
+QLabel { background: transparent; }
+
+QSlider::groove:horizontal { height: 4px; border-radius: 2px; background: #c8d4e8; }
+QSlider::handle:horizontal {
+    width: 10px; height: 10px; margin: -3px 0; border-radius: 5px;
+    background: #5c7cfa; border: none;
+}
+QSlider::sub-page:horizontal { background: #5c7cfa; border-radius: 2px; }
+
+QLabel#badge_green {
+    background: #e8f8ee; border: 1px solid #90d0a8; border-radius: 8px;
+    padding: 2px 8px; color: #1a6e3a; font-size: 11px; font-weight: 600;
+}
+QLabel#badge_blue {
+    background: #e8f0ff; border: 1px solid #90aef0; border-radius: 8px;
+    padding: 2px 8px; color: #2050c0; font-size: 11px;
+}
+QPushButton#btn_danger {
+    background: #fde8e8; border: 1px solid #e0a0a0; color: #b03030;
+    border-radius: 5px; padding: 5px 8px;
+}
+QPushButton#btn_danger:hover { background: #fcd0d0; border-color: #c06060; color: #8c2020; }
+QPushButton#btn_danger:pressed { background: #f8c0c0; }
+QPushButton#btn_ghost {
+    font-size: 11px; color: #6070a0; border: 1px dashed #a0b0d0;
+    background: #f0f4fc; border-radius: 4px;
+}
+QPushButton#btn_ghost:hover { color: #3050a0; border-color: #5070c0; background: #e8ecf8; }
+"""
+
 
 # Per-layer metadata: swatch colour and default napari colormap for image layers
 _LAYER_META = {
@@ -231,13 +349,22 @@ class CollapsibleSection(QWidget):
 
     def apply_theme(self, theme: str = 'dark'):
         """Reapply button + body stylesheets, preserving accent colour."""
-        btn_bg    = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #252840,stop:1 #1e2130)'
-        btn_hover = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2d3255,stop:1 #252840)'
-        btn_chk   = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2d3255,stop:1 #1e2130)'
-        btn_top   = '#2e3248'
-        btn_color = '#c5cae9'
-        body_bg   = '#191c2e'
-        body_bdr  = '#2e3248'
+        if theme == 'light':
+            btn_bg    = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #e8ecf8,stop:1 #dde3f5)'
+            btn_hover = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #d8e0f5,stop:1 #ccd4f0)'
+            btn_chk   = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #d0d8f5,stop:1 #dde3f5)'
+            btn_top   = '#c0cce8'
+            btn_color = '#1e2340'
+            body_bg   = '#f0f4fc'
+            body_bdr  = '#c8d4e8'
+        else:
+            btn_bg    = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #252840,stop:1 #1e2130)'
+            btn_hover = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2d3255,stop:1 #252840)'
+            btn_chk   = 'qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2d3255,stop:1 #1e2130)'
+            btn_top   = '#2e3248'
+            btn_color = '#c5cae9'
+            body_bg   = '#191c2e'
+            body_bdr  = '#2e3248'
         self._btn.setStyleSheet(
             f"QPushButton {{"
             f"  text-align: left; font-weight: 600; font-size: 11px; padding: 6px 8px;"
@@ -295,7 +422,8 @@ class GraphWindow(QWidget):
 
     def apply_theme(self, theme: str = 'dark'):
         self._theme = theme
-        self.setStyleSheet("QWidget { background: #171a2c; }")
+        bg = '#f5f6fa' if theme == 'light' else '#171a2c'
+        self.setStyleSheet(f"QWidget {{ background: {bg}; }}")
 
     def closeEvent(self, event):
         event.ignore()
@@ -317,9 +445,9 @@ class CalciumControls(QWidget):
 
     def __init__(self, napari_viewer: 'napari.viewer.Viewer'):
         super().__init__()
-        self.setStyleSheet(_PANEL_STYLE)
-
         self.viewer            = napari_viewer
+        self._theme            = getattr(napari_viewer, 'theme', 'dark')
+        self.setStyleSheet(_PANEL_STYLE_LIGHT if self._theme == 'light' else _PANEL_STYLE_DARK)
         self.raw_stack         = None
         self.processed_results = None
         self.last_path         = None
@@ -330,7 +458,6 @@ class CalciumControls(QWidget):
         self._verified_paths   = set()  # Bug 8: track which files have been saved
         self._file_states      = {}   # UI #2: path → 'unprocessed'|'analysed'|'verified'
         self._file_ui_state    = {}   # full UI state per file for lossless switching
-        self._theme            = 'dark'
 
         # Outer widget wraps a scroll area so the panel works on small screens
         sw, _sh = _screen_geom()
@@ -367,7 +494,7 @@ class CalciumControls(QWidget):
         h_lay.addLayout(title_row)
         h_lay.addWidget(self.lbl_current_file)
         outer.addWidget(self._header_widget)
-        self._apply_header_theme('dark')
+        self._apply_header_theme(self._theme)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -597,8 +724,12 @@ class CalciumControls(QWidget):
 
         # Register both panels in napari's View menu once the main window is fully built
         QTimer.singleShot(300, self._register_view_menu_actions)
-        # Apply initial theme to napari's built-in dock panels after they render
-        QTimer.singleShot(500, lambda: self._apply_napari_dock_theme(self._theme))
+        # Apply initial theme to all panels after they render
+        QTimer.singleShot(500, lambda: self._apply_theme(self._theme))
+        try:
+            self.viewer.events.theme.connect(self._on_napari_theme_changed)
+        except Exception:
+            pass
 
     # Bug 5: clean up the bottom dock when the controls panel is closed
     def closeEvent(self, event):
@@ -1192,12 +1323,23 @@ class CalciumControls(QWidget):
     # Dark / Light theme
     # ------------------------------------------------------------------
 
+    def _on_napari_theme_changed(self, event=None):
+        theme = getattr(self.viewer, 'theme', 'dark')
+        self._theme = theme
+        self._apply_theme(theme)
+
     def _apply_header_theme(self, theme: str = 'dark'):
         """Update only the header widget's stylesheet."""
-        bg  = 'qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #252840,stop:1 #1e2130)'
-        bdr = '#5c7cfa'
-        tc  = '#90caf9'
-        sc  = '#5a6488'
+        if theme == 'light':
+            bg  = 'qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #e8ecf8,stop:1 #dde3f5)'
+            bdr = '#5c7cfa'
+            tc  = '#1e2340'
+            sc  = '#5060a0'
+        else:
+            bg  = 'qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #252840,stop:1 #1e2130)'
+            bdr = '#5c7cfa'
+            tc  = '#90caf9'
+            sc  = '#5a6488'
         self._header_widget.setStyleSheet(
             f"QWidget {{ background: {bg}; border-bottom: 2px solid {bdr}; }}"
         )
@@ -1209,27 +1351,39 @@ class CalciumControls(QWidget):
             f"font-size: 10px; color: {sc}; background: transparent; border: none;"
         )
 
-    def _apply_theme(self):
-        self.setStyleSheet(_PANEL_STYLE_DARK)
-        self._apply_header_theme()
+    def _apply_theme(self, theme: str = 'dark'):
+        self._theme = theme
+        self.setStyleSheet(_PANEL_STYLE_LIGHT if theme == 'light' else _PANEL_STYLE_DARK)
+        self._apply_header_theme(theme)
         for sec in self._all_sections_all:
-            sec.apply_theme('dark')
+            sec.apply_theme(theme)
         if hasattr(self, 'results_widget'):
-            self.results_widget.apply_theme('dark')
+            self.results_widget.apply_theme(theme)
         self._rebuild_layer_controls()
-        self._apply_napari_dock_theme('dark')
+        self._apply_napari_dock_theme(theme)
 
     def _apply_napari_dock_theme(self, theme: str = 'dark'):
         """Apply CTA colour palette to napari's layer list and layer controls panels."""
-        dock_bg   = '#1e2130'
-        widget_bg = '#171a2c'
-        text_c    = '#c8d0ec'
-        border_c  = '#3a3e58'
-        sel_bg    = '#3d4570'
-        btn_bg    = '#272b42'
-        btn_hover = '#343857'
-        input_bg  = '#232640'
-        scroll_h  = '#404870'
+        if theme == 'light':
+            dock_bg   = '#f5f6fa'
+            widget_bg = '#ffffff'
+            text_c    = '#1e2340'
+            border_c  = '#c0cce8'
+            sel_bg    = '#d0daf8'
+            btn_bg    = '#e8ecf8'
+            btn_hover = '#d8e0f5'
+            input_bg  = '#ffffff'
+            scroll_h  = '#a0aed0'
+        else:
+            dock_bg   = '#1e2130'
+            widget_bg = '#171a2c'
+            text_c    = '#c8d0ec'
+            border_c  = '#3a3e58'
+            sel_bg    = '#3d4570'
+            btn_bg    = '#272b42'
+            btn_hover = '#343857'
+            input_bg  = '#232640'
+            scroll_h  = '#404870'
 
         napari_sheet = f"""
 QWidget {{ background: {dock_bg}; color: {text_c}; font-size: 12px; }}
@@ -1631,27 +1785,39 @@ class ResultsWidget(QWidget):
         self.viewer.dims.events.current_step.connect(self.update_points_z)
 
     def apply_theme(self, theme: str = 'dark'):
-        self._theme = 'dark'
-        self.setStyleSheet(_PANEL_STYLE_DARK)
-        # Graph stays white regardless of panel theme
+        self._theme = theme
+        self.setStyleSheet(_PANEL_STYLE_LIGHT if theme == 'light' else _PANEL_STYLE_DARK)
+        # matplotlib canvas always on white background for readability
         self.canvas.figure.patch.set_facecolor('#ffffff')
         self.ax.set_facecolor('#ffffff')
         self.ax.tick_params(colors='#444444')
         for sp in self.ax.spines.values():
             sp.set_edgecolor('#bbbbbb')
         self.ax.grid(True, color='#e8e8e8', linestyle='--', linewidth=0.5, alpha=0.9)
-        self.btn_random.setStyleSheet(
-            "QPushButton { background:#252840; border:1px solid #3a3e58; color:#c8d0ec;"
-            "  border-radius:4px; padding:4px 10px; font-size:11px; }"
-            "QPushButton:hover { background:#2d3255; border-color:#5c7cfa; color:#e8ecff; }"
-        )
-        self.btn_clear.setStyleSheet(
-            "QPushButton { background:#2d1a1a; border:1px solid #5c2020; color:#e57373;"
-            "  border-radius:4px; padding:4px 10px; font-size:11px; }"
-            "QPushButton:hover { background:#3d2020; border-color:#8c3030; color:#ff8a80; }"
-        )
+        if theme == 'light':
+            self.btn_random.setStyleSheet(
+                "QPushButton { background:#e8ecf8; border:1px solid #c0cce8; color:#2a3560;"
+                "  border-radius:4px; padding:4px 10px; font-size:11px; }"
+                "QPushButton:hover { background:#d8e0f5; border-color:#7a8cc0; color:#1a2040; }"
+            )
+            self.btn_clear.setStyleSheet(
+                "QPushButton { background:#fde8e8; border:1px solid #e0a0a0; color:#b03030;"
+                "  border-radius:4px; padding:4px 10px; font-size:11px; }"
+                "QPushButton:hover { background:#fcd0d0; border-color:#c06060; color:#8c2020; }"
+            )
+        else:
+            self.btn_random.setStyleSheet(
+                "QPushButton { background:#252840; border:1px solid #3a3e58; color:#c8d0ec;"
+                "  border-radius:4px; padding:4px 10px; font-size:11px; }"
+                "QPushButton:hover { background:#2d3255; border-color:#5c7cfa; color:#e8ecff; }"
+            )
+            self.btn_clear.setStyleSheet(
+                "QPushButton { background:#2d1a1a; border:1px solid #5c2020; color:#e57373;"
+                "  border-radius:4px; padding:4px 10px; font-size:11px; }"
+                "QPushButton:hover { background:#3d2020; border-color:#8c3030; color:#ff8a80; }"
+            )
         if hasattr(self, '_graph_window') and self._graph_window is not None:
-            self._graph_window.apply_theme('dark')
+            self._graph_window.apply_theme(theme)
         self.canvas.draw_idle()
 
     def set_data(self, results, bin_size):
