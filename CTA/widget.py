@@ -279,13 +279,6 @@ QPushButton#btn_ghost:hover { color: #3050a0; border-color: #5070c0; background:
 """
 
 
-# Per-layer metadata: swatch colour and default napari colormap for image layers
-_LAYER_META = {
-    'Pulsatility': {'color': '#ff8c42', 'colormaps': ['inferno', 'viridis', 'plasma', 'magma', 'hot']},
-    'Wave Map':    {'color': '#9b72cf', 'colormaps': ['twilight_shifted', 'coolwarm', 'RdBu', 'bwr', 'hsv']},
-    'Clusters':    {'color': '#20c997', 'colormaps': None},
-    'Selection':   {'color': '#5c7cfa', 'colormaps': None},
-}
 
 
 class VsiConverterWorker(QThread):
@@ -670,7 +663,6 @@ class CalciumControls(QWidget):
 
         # --- 6. LAYER CONTROLS ---
         sec_layers = CollapsibleSection("6. Layer Controls")
-        # Quick preset buttons
         preset_row = QHBoxLayout()
         preset_row.setSpacing(4)
         for label, slot in [("All On", self._layers_all_on),
@@ -682,17 +674,15 @@ class CalciumControls(QWidget):
             preset_row.addWidget(b)
         sec_layers.body_layout.addLayout(preset_row)
 
-        # Dynamic per-layer rows — rebuilt by _rebuild_layer_controls()
         self._layer_ctrl_container = QWidget()
         self._layer_ctrl_layout    = QVBoxLayout(self._layer_ctrl_container)
         self._layer_ctrl_layout.setContentsMargins(0, 4, 0, 0)
-        self._layer_ctrl_layout.setSpacing(4)
+        self._layer_ctrl_layout.setSpacing(2)
         lbl_placeholder = QLabel("Run analysis to populate layers")
-        lbl_placeholder.setStyleSheet("color: #6870a0; font-size: 11px; font-style: italic;")
+        lbl_placeholder.setStyleSheet("font-style: italic; font-size: 11px;")
         self._layer_ctrl_layout.addWidget(lbl_placeholder)
         sec_layers.body_layout.addWidget(self._layer_ctrl_container)
 
-        # VSI + Layer Controls excluded from Collapse/Expand All (they manage themselves)
         self._all_sections = [sec_queue, sec_param, sec_act, sec_export]
         self._all_sections_all = [sec_queue, sec_param, sec_act, sec_export, sec_layers]
 
@@ -731,8 +721,8 @@ class CalciumControls(QWidget):
         except Exception:
             pass
 
-    # Bug 5: clean up the bottom dock when the controls panel is closed
     def closeEvent(self, event):
+        # Remove the Traces & Metrics bottom dock
         vid = id(self.viewer)
         if vid in CalciumControls._results_docks:
             try:
@@ -740,16 +730,51 @@ class CalciumControls(QWidget):
             except Exception:
                 pass
             del CalciumControls._results_docks[vid]
+
+        # Unregister mouse callback
         try:
             self.viewer.mouse_drag_callbacks.remove(self.results_widget.on_click)
         except (ValueError, AttributeError, RuntimeError):
             pass
+
+        # Close the detached graph window
         try:
             gw = getattr(self.results_widget, '_graph_window', None)
             if gw is not None:
-                gw.hide()
+                gw.close()
         except Exception:
             pass
+
+        # Remove View menu actions that CTA added (separator + two toggles)
+        try:
+            menubar  = self.viewer.window._qt_window.menuBar()
+            for action in menubar.actions():
+                if 'view' in action.text().lower():
+                    view_menu = action.menu()
+                    for a in [getattr(self, '_traces_view_action', None),
+                               getattr(self, '_ctrl_view_action',   None)]:
+                        if a is not None:
+                            view_menu.removeAction(a)
+                    break
+        except Exception:
+            pass
+
+        # Clear all CTA layers so napari returns to its default empty state
+        try:
+            self.viewer.layers.clear()
+        except Exception:
+            pass
+
+        # Reset napari's native layer list and layer controls to their default styling
+        try:
+            qt_viewer = self.viewer.window._qt_viewer
+            for attr in ('dockLayerList', 'dockLayerControls'):
+                dock = getattr(qt_viewer, attr, None)
+                if dock is not None:
+                    dock.setStyleSheet("")
+        except Exception:
+            pass
+
         super().closeEvent(event)
 
     # Bug 4: restore the bottom panel after user closes it; recreate if C++ object was deleted
@@ -1360,191 +1385,52 @@ class CalciumControls(QWidget):
         if hasattr(self, 'results_widget'):
             self.results_widget.apply_theme(theme)
         self._rebuild_layer_controls()
-        self._apply_napari_dock_theme(theme)
-
-    def _apply_napari_dock_theme(self, theme: str = 'dark'):
-        """Apply CTA colour palette to napari's layer list and layer controls panels."""
-        if theme == 'light':
-            dock_bg   = '#f5f6fa'
-            widget_bg = '#ffffff'
-            text_c    = '#1e2340'
-            border_c  = '#c0cce8'
-            sel_bg    = '#d0daf8'
-            btn_bg    = '#e8ecf8'
-            btn_hover = '#d8e0f5'
-            input_bg  = '#ffffff'
-            scroll_h  = '#a0aed0'
-        else:
-            dock_bg   = '#1e2130'
-            widget_bg = '#171a2c'
-            text_c    = '#c8d0ec'
-            border_c  = '#3a3e58'
-            sel_bg    = '#3d4570'
-            btn_bg    = '#272b42'
-            btn_hover = '#343857'
-            input_bg  = '#232640'
-            scroll_h  = '#404870'
-
-        napari_sheet = f"""
-QWidget {{ background: {dock_bg}; color: {text_c}; font-size: 12px; }}
-QListWidget, QTreeWidget {{
-    background: {widget_bg}; border: 1px solid {border_c}; border-radius: 4px;
-    color: {text_c};
-}}
-QListWidget::item, QTreeWidget::item {{
-    min-height: 32px; padding: 3px 6px; border-radius: 2px;
-}}
-QListWidget::item:selected, QTreeWidget::item:selected {{
-    background: {sel_bg}; color: #ffffff;
-}}
-QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected {{
-    background: {btn_bg};
-}}
-QPushButton {{
-    background: {btn_bg}; color: {text_c}; border: 1px solid {border_c};
-    border-radius: 4px; padding: 3px 8px; min-height: 22px;
-}}
-QPushButton:hover {{ background: {btn_hover}; }}
-QSlider::groove:horizontal {{ background: {border_c}; height: 4px; border-radius: 2px; }}
-QSlider::handle:horizontal {{
-    background: #5c7cfa; width: 10px; height: 10px;
-    margin: -3px 0; border-radius: 5px; border: none;
-}}
-QComboBox {{
-    background: {input_bg}; border: 1px solid {border_c}; border-radius: 4px;
-    padding: 3px 6px; color: {text_c};
-}}
-QScrollBar:vertical {{
-    background: {widget_bg}; width: 6px; border-radius: 3px;
-}}
-QScrollBar::handle:vertical {{ background: {scroll_h}; border-radius: 3px; min-height: 20px; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QLabel {{ background: transparent; color: {text_c}; }}
-QCheckBox {{ color: {text_c}; }}
-QCheckBox::indicator {{
-    width: 13px; height: 13px; border: 1px solid {border_c};
-    border-radius: 3px; background: {input_bg};
-}}
-QCheckBox::indicator:checked {{ background: #5c7cfa; border-color: #5c7cfa; }}
-QTabBar::tab {{
-    background: {btn_bg}; color: {text_c}; border: 1px solid {border_c};
-    padding: 4px 10px; min-width: 60px; min-height: 22px;
-}}
-QTabBar::tab:selected {{ background: {widget_bg}; border-bottom-color: {widget_bg}; }}
-QTabBar::tab:hover:!selected {{ background: {btn_hover}; }}
-QTabWidget::pane {{ border: 1px solid {border_c}; }}
-"""
-        try:
-            qt_viewer = self.viewer.window._qt_viewer
-            for attr in ('dockLayerList', 'dockLayerControls'):
-                dock = getattr(qt_viewer, attr, None)
-                if dock is not None:
-                    dock.setStyleSheet(napari_sheet)
-        except Exception:
-            pass
 
     # ------------------------------------------------------------------
     # Layer Controls (section 6)
     # ------------------------------------------------------------------
 
     def _rebuild_layer_controls(self):
-        """Clear and repopulate the per-layer rows in section 6."""
-        # Clear existing rows
         while self._layer_ctrl_layout.count():
             item = self._layer_ctrl_layout.takeAt(0)
             w = item.widget()
             if w:
                 w.deleteLater()
 
-        theme = self._theme
-        muted = '#8890b0' if theme == 'dark' else '#5060a0'
-        row_bg = '#1e2238' if theme == 'dark' else '#e8f0fc'
+        KNOWN = ('Pulsatility', 'Wave Map', 'Clusters', 'Selection')
+        present = [n for n in KNOWN if n in self.viewer.layers]
 
-        visible = [n for n in _LAYER_META if n in self.viewer.layers]
-
-        if not visible:
+        if not present:
             lbl = QLabel("Run analysis to populate layers")
-            lbl.setStyleSheet(f"color: {muted}; font-size: 11px; font-style: italic;")
+            lbl.setStyleSheet("font-style: italic; font-size: 11px;")
             self._layer_ctrl_layout.addWidget(lbl)
             return
 
-        from qtpy.QtWidgets import QSlider, QFrame
-        for name in visible:
+        from qtpy.QtWidgets import QSlider
+        for name in present:
             layer = self.viewer.layers[name]
-            meta  = _LAYER_META[name]
-            is_image = hasattr(layer, 'colormap')
 
-            frame = QFrame()
-            frame.setStyleSheet(
-                f"QFrame {{ background: {row_bg}; border-radius: 5px; }}"
-            )
-            frame_lay = QVBoxLayout(frame)
-            frame_lay.setContentsMargins(6, 4, 6, 4)
-            frame_lay.setSpacing(3)
+            row = QWidget()
+            row_lay = QHBoxLayout(row)
+            row_lay.setContentsMargins(0, 1, 0, 1)
+            row_lay.setSpacing(6)
 
-            # ── Top row: visibility · swatch · name · opacity ──
-            top = QHBoxLayout()
-            top.setSpacing(5)
-
-            chk_vis = QCheckBox()
-            chk_vis.setChecked(layer.visible)
-            chk_vis.setFixedWidth(18)
-            chk_vis.setToolTip("Toggle layer visibility")
-            chk_vis.toggled.connect(lambda v, n=name: self._set_layer_visible(n, v))
-
-            swatch = QLabel("■")
-            swatch.setStyleSheet(
-                f"color: {meta['color']}; font-size: 14px; background: transparent;"
-            )
-            swatch.setFixedWidth(16)
-
-            name_lbl = QLabel(name)
-            name_lbl.setStyleSheet("font-size: 11px; background: transparent;")
-
-            pct_lbl = QLabel(f"{int(layer.opacity * 100)}%")
-            pct_lbl.setFixedWidth(30)
-            pct_lbl.setStyleSheet(f"font-size: 10px; color: {muted}; background: transparent;")
+            chk = QCheckBox(name)
+            chk.setChecked(layer.visible)
+            chk.toggled.connect(lambda v, n=name: self._set_layer_visible(n, v))
+            row_lay.addWidget(chk, 1)
 
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.setRange(0, 100)
             slider.setValue(int(layer.opacity * 100))
-            slider.setFixedWidth(58)
-            slider.setToolTip("Layer opacity")
+            slider.setFixedWidth(70)
+            slider.setToolTip("Opacity")
             slider.valueChanged.connect(
-                lambda v, n=name, l=pct_lbl: (self._set_layer_opacity(n, v / 100), l.setText(f"{v}%"))
+                lambda v, n=name: self._set_layer_opacity(n, v / 100)
             )
+            row_lay.addWidget(slider)
 
-            top.addWidget(chk_vis)
-            top.addWidget(swatch)
-            top.addWidget(name_lbl, 1)
-            top.addWidget(slider)
-            top.addWidget(pct_lbl)
-            frame_lay.addLayout(top)
-
-            # ── Colormap row (image layers only) ──
-            if is_image and meta['colormaps']:
-                cmap_row = QHBoxLayout()
-                cmap_row.setContentsMargins(34, 0, 0, 0)
-                cmap_lbl = QLabel("Colormap:")
-                cmap_lbl.setStyleSheet(
-                    f"font-size: 10px; color: {muted}; background: transparent;"
-                )
-                cmap_combo = QComboBox()
-                cmap_combo.setStyleSheet("font-size: 10px;")
-                for cm in meta['colormaps']:
-                    cmap_combo.addItem(cm)
-                current_cmap = getattr(layer.colormap, 'name', str(layer.colormap))
-                idx = cmap_combo.findText(current_cmap)
-                if idx >= 0:
-                    cmap_combo.setCurrentIndex(idx)
-                cmap_combo.currentTextChanged.connect(
-                    lambda cm, n=name: self._set_layer_colormap(n, cm)
-                )
-                cmap_row.addWidget(cmap_lbl)
-                cmap_row.addWidget(cmap_combo, 1)
-                frame_lay.addLayout(cmap_row)
-
-            self._layer_ctrl_layout.addWidget(frame)
+            self._layer_ctrl_layout.addWidget(row)
 
     def _set_layer_visible(self, name: str, visible: bool):
         if name in self.viewer.layers:
@@ -1554,31 +1440,21 @@ QTabWidget::pane {{ border: 1px solid {border_c}; }}
         if name in self.viewer.layers:
             self.viewer.layers[name].opacity = value
 
-    def _set_layer_colormap(self, name: str, cmap_name: str):
-        if name in self.viewer.layers:
-            try:
-                self.viewer.layers[name].colormap = cmap_name
-            except Exception:
-                pass
-
     def _layers_all_on(self):
-        for name in _LAYER_META:
-            if name in self.viewer.layers:
-                self.viewer.layers[name].visible = True
+        for layer in self.viewer.layers:
+            layer.visible = True
         self._rebuild_layer_controls()
 
     def _layers_overlays_only(self):
-        if self.last_path:
-            raw_name = os.path.basename(self.last_path)
-            for layer in self.viewer.layers:
-                layer.visible = layer.name != raw_name
+        raw_name = os.path.basename(self.last_path) if self.last_path else None
+        for layer in self.viewer.layers:
+            layer.visible = layer.name != raw_name
         self._rebuild_layer_controls()
 
     def _layers_raw_only(self):
-        if self.last_path:
-            raw_name = os.path.basename(self.last_path)
-            for layer in self.viewer.layers:
-                layer.visible = (layer.name == raw_name)
+        raw_name = os.path.basename(self.last_path) if self.last_path else None
+        for layer in self.viewer.layers:
+            layer.visible = layer.name == raw_name
         self._rebuild_layer_controls()
 
     def _register_view_menu_actions(self):
