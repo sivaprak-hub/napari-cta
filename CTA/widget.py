@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog,
-                             QSpinBox, QDoubleSpinBox, QComboBox, QAction,
+                             QSpinBox, QDoubleSpinBox, QComboBox,
                              QTableWidget, QTableWidgetItem, QHeaderView,
                              QProgressBar, QMessageBox, QSplitter, QListWidget, QListWidgetItem,
                              QCheckBox, QAbstractItemView, QScrollArea, QSizePolicy, QApplication)
@@ -712,8 +712,8 @@ class CalciumControls(QWidget):
         self._results_dock = _dock
         CalciumControls._results_docks[vid] = _dock
 
-        # Register both panels in napari's View menu once the main window is fully built
-        QTimer.singleShot(300, self._register_view_menu_actions)
+        # Connect CTA dock visibility → Traces & Metrics dock once the dock wrapper exists
+        QTimer.singleShot(400, self._connect_dock_signals)
         # Apply initial theme to all panels after they render
         QTimer.singleShot(500, lambda: self._apply_theme(self._theme))
         try:
@@ -742,20 +742,6 @@ class CalciumControls(QWidget):
             gw = getattr(self.results_widget, '_graph_window', None)
             if gw is not None:
                 gw.close()
-        except Exception:
-            pass
-
-        # Remove View menu actions that CTA added (separator + two toggles)
-        try:
-            menubar  = self.viewer.window._qt_window.menuBar()
-            for action in menubar.actions():
-                if 'view' in action.text().lower():
-                    view_menu = action.menu()
-                    for a in [getattr(self, '_traces_view_action', None),
-                               getattr(self, '_ctrl_view_action',   None)]:
-                        if a is not None:
-                            view_menu.removeAction(a)
-                    break
         except Exception:
             pass
 
@@ -1348,6 +1334,37 @@ class CalciumControls(QWidget):
     # Dark / Light theme
     # ------------------------------------------------------------------
 
+    def _connect_dock_signals(self):
+        """Find the dock wrapping CTA Controls and sync Traces & Metrics visibility with it."""
+        p = self.parent()
+        for _ in range(10):
+            if p is None:
+                break
+            cls_name = type(p).__name__
+            if cls_name in ('QtViewerDockWidget', 'QDockWidget'):
+                try:
+                    p.visibilityChanged.connect(self._on_cta_dock_visibility)
+                except Exception:
+                    pass
+                return
+            try:
+                p = p.parent()
+            except Exception:
+                break
+
+    def _on_cta_dock_visibility(self, visible):
+        """When CTA Controls dock is hidden/shown, sync the Traces & Metrics dock."""
+        dock = getattr(self, '_results_dock', None)
+        if dock is None:
+            return
+        try:
+            if visible:
+                dock.show()
+            else:
+                dock.hide()
+        except RuntimeError:
+            pass
+
     def _on_napari_theme_changed(self, event=None):
         theme = getattr(self.viewer, 'theme', 'dark')
         self._theme = theme
@@ -1456,68 +1473,6 @@ class CalciumControls(QWidget):
         for layer in self.viewer.layers:
             layer.visible = layer.name == raw_name
         self._rebuild_layer_controls()
-
-    def _register_view_menu_actions(self):
-        """Add CTA Controls and Traces & Metrics toggles to napari's View menu."""
-        try:
-            menubar = self.viewer.window._qt_window.menuBar()
-            view_menu = None
-            for action in menubar.actions():
-                if 'view' in action.text().lower():
-                    view_menu = action.menu()
-                    break
-            if view_menu is None:
-                return
-
-            view_menu.addSeparator()
-
-            # --- Traces & Metrics toggle ---
-            traces_action = QAction("Traces && Metrics", view_menu)
-            traces_action.setCheckable(True)
-            traces_action.setChecked(True)
-            def _toggle_traces(checked):
-                dock = getattr(self, '_results_dock', None)
-                if dock is None:
-                    return
-                try:
-                    dock.show() if checked else dock.hide()
-                except RuntimeError:
-                    pass
-            traces_action.toggled.connect(_toggle_traces)
-            view_menu.addAction(traces_action)
-            self._traces_view_action = traces_action
-
-            # --- CTA Controls toggle ---
-            # Walk up the parent chain to find the dock wrapper that contains this widget
-            ctrl_dock = None
-            p = self.parent()
-            for _ in range(10):
-                if p is None:
-                    break
-                cls_name = type(p).__name__
-                if cls_name in ('QtViewerDockWidget', 'QDockWidget', '_QtMainWindow'):
-                    ctrl_dock = p
-                    break
-                try:
-                    p = p.parent()
-                except Exception:
-                    break
-
-            ctrl_action = QAction("CTA Controls", view_menu)
-            ctrl_action.setCheckable(True)
-            ctrl_action.setChecked(True)
-            def _toggle_ctrl(checked, _dock=ctrl_dock):
-                target = _dock if _dock is not None else self
-                try:
-                    target.setVisible(checked)
-                except RuntimeError:
-                    pass
-            ctrl_action.toggled.connect(_toggle_ctrl)
-            view_menu.addAction(ctrl_action)
-            self._ctrl_view_action = ctrl_action
-
-        except Exception:
-            pass  # View menu integration is best-effort; never crash on it
 
     def _on_conversion_done(self):
         self.btn_vsi.setEnabled(True)
