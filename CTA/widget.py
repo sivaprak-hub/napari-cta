@@ -70,25 +70,25 @@ QComboBox QAbstractItemView {
 
 QSpinBox, QDoubleSpinBox {
     background: #232640; border: 1px solid #3a3e58; border-radius: 4px;
-    padding: 3px 24px 3px 6px; color: #c8d0ec; min-height: 22px;
+    padding: 3px 26px 3px 6px; color: #c8d0ec; min-height: 26px;
 }
 QSpinBox:hover, QDoubleSpinBox:hover { border-color: #5a6088; }
 QSpinBox::up-button, QDoubleSpinBox::up-button {
     subcontrol-origin: border; subcontrol-position: top right;
-    width: 18px; background: #2a2e48;
+    width: 20px; background: #2a2e48;
     border-left: 1px solid #3a3e58; border-bottom: 1px solid #3a3e58;
     border-top-right-radius: 4px;
 }
 QSpinBox::down-button, QDoubleSpinBox::down-button {
     subcontrol-origin: border; subcontrol-position: bottom right;
-    width: 18px; background: #2a2e48;
+    width: 20px; background: #2a2e48;
     border-left: 1px solid #3a3e58;
     border-bottom-right-radius: 4px;
 }
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
 QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #3a3e60; }
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 7px; height: 7px; }
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 7px; height: 7px; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 8px; height: 8px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 8px; height: 8px; }
 
 QListWidget {
     background: #171a2c; border: 1px solid #3a3e58; border-radius: 4px; padding: 2px;
@@ -190,25 +190,25 @@ QComboBox QAbstractItemView {
 
 QSpinBox, QDoubleSpinBox {
     background: #ffffff; border: 1px solid #c0cce8; border-radius: 4px;
-    padding: 3px 24px 3px 6px; color: #2a3560; min-height: 22px;
+    padding: 3px 26px 3px 6px; color: #2a3560; min-height: 26px;
 }
 QSpinBox:hover, QDoubleSpinBox:hover { border-color: #7a8cc0; }
 QSpinBox::up-button, QDoubleSpinBox::up-button {
     subcontrol-origin: border; subcontrol-position: top right;
-    width: 18px; background: #e8ecf8;
+    width: 20px; background: #e8ecf8;
     border-left: 1px solid #c0cce8; border-bottom: 1px solid #c0cce8;
     border-top-right-radius: 4px;
 }
 QSpinBox::down-button, QDoubleSpinBox::down-button {
     subcontrol-origin: border; subcontrol-position: bottom right;
-    width: 18px; background: #e8ecf8;
+    width: 20px; background: #e8ecf8;
     border-left: 1px solid #c0cce8;
     border-bottom-right-radius: 4px;
 }
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
 QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #d8e0f5; }
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 7px; height: 7px; }
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 7px; height: 7px; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 8px; height: 8px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 8px; height: 8px; }
 
 QListWidget {
     background: #ffffff; border: 1px solid #c0cce8; border-radius: 4px; padding: 2px;
@@ -1493,7 +1493,7 @@ class ResultsWidget(QWidget):
         self.bin_size = 1
         self.selected_coords = []
 
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(260)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setStyleSheet(_PANEL_STYLE)
         self._theme = 'dark'
@@ -1600,6 +1600,9 @@ class ResultsWidget(QWidget):
             self.table.horizontalHeaderItem(i).setToolTip(tip)
         # Bug 7: stretch columns to fill available width instead of sizing to content
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Compact rows so all 6 fit without scrolling; row numbers add no value here
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(24)
         self.table.itemSelectionChanged.connect(self._on_table_select)
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -1838,6 +1841,14 @@ class ResultsWidget(QWidget):
             self.ax.set_title(os.path.basename(fname), fontsize=9, color='#333333', pad=3)
 
         if not self.results or not self.selected_coords:
+            # Remove all selection markers from the napari image
+            if 'Selection' in self.viewer.layers:
+                try:
+                    layer = self.viewer.layers['Selection']
+                    layer.data = np.empty((0, 3))
+                    layer.refresh()
+                except Exception:
+                    pass
             # UI #6: placeholder text when no cells are selected
             self.ax.text(
                 0.5, 0.5,
