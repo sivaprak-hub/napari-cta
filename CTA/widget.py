@@ -1890,7 +1890,7 @@ class ResultsWidget(QWidget):
                 cell_peaks, _ = _scipy_find_peaks(
                     sig,
                     prominence=sig_range_cell * 0.10,
-                    distance=max(int(fps_est * 0.5), 2),
+                    distance=max(int(fps_est * 0.25), 2),
                 )
                 if len(cell_peaks) > 0:
                     self.ax.plot(time[cell_peaks], sig[cell_peaks], 'v',

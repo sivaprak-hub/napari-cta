@@ -773,18 +773,32 @@ def compute_reference_trace(corrected_signals, activity_mask):
 def detect_beats(reference_trace, time_stamps, fps_eff):
     """
     Detect beat peaks in the reference trace.
-    Minimum spacing = 0.8 s (handles up to ~75 BPM).
+    Two-pass adaptive: pass 1 allows up to ~240 BPM, pass 2 refines using
+    70% of the observed median inter-peak interval.
     Returns array of peak frame indices.
     """
     sig_range = np.max(reference_trace) - np.min(reference_trace)
     if sig_range < 1e-6:
         return np.array([], dtype=int)
 
-    min_dist = max(int(fps_eff * 0.8), 2)
+    # Pass 1 — wide-open: 0.25 s minimum gap handles up to ~240 BPM
+    min_dist_init = max(int(fps_eff * 0.25), 2)
+    peaks_init, _ = find_peaks(
+        reference_trace,
+        prominence=sig_range * 0.15,
+        distance=min_dist_init,
+    )
+    if len(peaks_init) < 2:
+        return peaks_init
+
+    # Pass 2 — adaptive: 70% of observed median inter-peak interval removes
+    # noise peaks without capping detectable rate
+    med_interval = int(np.median(np.diff(peaks_init)))
+    min_dist_final = max(int(med_interval * 0.7), 2)
     peaks, _ = find_peaks(
         reference_trace,
         prominence=sig_range * 0.15,
-        distance=min_dist,
+        distance=min_dist_final,
     )
     return peaks
 
