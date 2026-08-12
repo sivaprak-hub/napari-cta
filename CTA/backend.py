@@ -658,7 +658,9 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
         result[k] = float(np.mean(vals)) if vals else np.nan
 
     total_dur = time_stamps[-1] - time_stamps[0]
-    result['BPM'] = (len(per_beat) / total_dur) * 60 if total_dur > 0 else 0.0
+    # Use total beat_peaks count, not len(per_beat), so amplitude-filter dropouts
+    # don't artificially halve the reported BPM for noisier cells
+    result['BPM'] = (len(beat_peaks) / total_dur) * 60 if total_dur > 0 else 0.0
 
     t_on   = result.get('T_ON_ms',  np.nan)
     t_off  = result.get('T_OFF_ms', np.nan)
