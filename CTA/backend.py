@@ -658,9 +658,12 @@ def extract_beat_averaged_features(time_stamps, signal, beat_peaks, raw_signal=N
         result[k] = float(np.mean(vals)) if vals else np.nan
 
     total_dur = time_stamps[-1] - time_stamps[0]
-    # Use total beat_peaks count, not len(per_beat), so amplitude-filter dropouts
-    # don't artificially halve the reported BPM for noisier cells
-    result['BPM'] = (len(beat_peaks) / total_dur) * 60 if total_dur > 0 else 0.0
+    # Compute per-cell BPM from this cell's own signal using two-pass adaptive
+    # peak detection — gives each cell its true individual beat rate
+    fps_cell = (len(time_stamps) - 1) / max(total_dur, 1e-6)
+    cell_peaks = detect_beats(signal, time_stamps, fps_cell)
+    n_cell_beats = len(cell_peaks) if len(cell_peaks) > 0 else len(per_beat)
+    result['BPM'] = (n_cell_beats / total_dur) * 60 if total_dur > 0 else 0.0
 
     t_on   = result.get('T_ON_ms',  np.nan)
     t_off  = result.get('T_OFF_ms', np.nan)
