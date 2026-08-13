@@ -55,11 +55,6 @@ pip install -e .
 
 Then open napari — the plugin appears under **Plugins → CTA Controls**.
 
-### Or run standalone
-```bash
-python -m CTA_Fixed.widget
-```
-
 ### Dependencies (installed automatically)
 ```
 napari, numpy, pandas, tifffile, scipy, scikit-image, scikit-learn,
@@ -72,7 +67,7 @@ matplotlib, openpyxl, aicsimageio, imagecodecs
 
 ```
 napari-cta/
-├── CTA_Fixed/
+├── CTA/
 │   ├── __init__.py        # Plugin entry point
 │   ├── backend.py         # Signal processing, ETS reader, feature extraction, worker threads
 │   ├── widget.py          # napari UI — left control panel + bottom results panel

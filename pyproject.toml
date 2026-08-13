@@ -5,8 +5,30 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "napari-cta"
 version = "0.1.0"
-description = "Calcium Transient Analyzer napari plugin"
+description = "Calcium Transient Analyzer — automated kinetic analysis of fluorescence calcium imaging in napari"
+readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "Kishore Balaji Sivaprakash", email = "sivaprak@tcd.ie" },
+]
+keywords = [
+    "napari", "calcium imaging", "cardiomyocyte", "calcium transient",
+    "fluorescence microscopy", "image analysis", "BPM", "electrophysiology",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: napari",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
 dependencies = [
     "napari",
     "numpy",
@@ -20,6 +42,11 @@ dependencies = [
     "aicsimageio",
     "imagecodecs",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sivaprak-hub/napari-cta"
+Repository = "https://github.com/sivaprak-hub/napari-cta"
+"Bug Tracker" = "https://github.com/sivaprak-hub/napari-cta/issues"
 
 [project.entry-points."napari.manifest"]
 napari-cta = "CTA:napari.yaml"
